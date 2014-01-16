@@ -9,6 +9,9 @@ var user = require('./routes/user');
 var http = require('http');
 var path = require('path');
 
+var channel = require('./channel_mem');
+var peca_middle = require('./peca_middleware');
+
 var app = express();
 
 // all environments
@@ -28,9 +31,12 @@ if ('development' == app.get('env')) {
   app.use(express.errorHandler());
 }
 
-app.get('/', routes.index);
-app.get('/users', user.list);
+var channel_obj = channel.channel_mem;
+var channel_list = peca_middle.startPCPServer(7146, channel_obj);
+app.get('/', channel_list, routes.index);
+//app.get('/users', user.list);
 
 http.createServer(app).listen(app.get('port'), function(){
   console.log('Express server listening on port ' + app.get('port'));
 });
+

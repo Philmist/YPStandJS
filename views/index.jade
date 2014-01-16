@@ -2,4 +2,15 @@ extends layout
 
 block content
   h1= title
-  p Welcome to #{title}
+  p ようこそ #{title} へ
+  p= test
+  dl
+    - for (var i in channels)
+      dt= i
+      - if (channels[i].lastUpdated)
+        dd= "LastUpdated: " + channels[i].lastUpdated.toString()
+      - if (channels[i].info)
+        dd= "Info: " + channels[i].info
+      - if (channels[i].track)
+        dd= "Track: " + channels[i].track
+

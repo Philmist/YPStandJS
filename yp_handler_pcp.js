@@ -44,7 +44,7 @@ function onChan(atom, sock, host, chobj) {
   //console.log(util.inspect(atom));
   
   var channelId = atom.getFromName(pcpconst.PCP_CHAN_ID);
-  var h = host[toStringRemoteAddressPort];
+  var h = host[toStringRemoteAddressPort(sock)];
   if (!h) {
     return host;
   }
@@ -62,6 +62,17 @@ function onChan(atom, sock, host, chobj) {
       c.lastUpdated = Date.now();
       chobj.set(channelId.toString(), c);
     }
+  } else if (h.broadcastId) {
+    c = {
+      startFrom : Date.now(),
+      lastUpdated : Date.now(),
+      channelId : channelId,
+      broadcastId : h.broadcastId,
+      info : null,
+      track : null,
+      hosts : {}
+    };
+    chobj.set(channelId.toString(), c);
   }
   
   return host;
@@ -69,17 +80,23 @@ function onChan(atom, sock, host, chobj) {
 
 function onHost(atom, sock, host, chobj) {
   //console.log("Handler : PCP_HOST");
-  //console.log(util.inspect(atom));
-  var sessionId = atom.getFromName(pcpconst.PCP_HOST_ID);
+  var sId = atom.getFromName(pcpconst.PCP_HOST_ID);
+  //console.log(util.inspect(sId));
   var channelId = atom.getFromName(pcpconst.PCP_HOST_CHANID);
   var remoteAddr = toStringRemoteAddressPort(sock);
   var hostSId = host[remoteAddr].sessionId;
   var c = chobj.get(channelId.toString());
-  if ((hostSId) & (c)) {
-    if (hostSId.toString() == sessionId.toString()) {
-      if (((atom.getFromName(pcpconst.PCP_HOST_FLAGS1) || 0) & pcpconst.PCP_HOST_FLAGS1_RECV) != 0) {
+  if ((hostSId) && (c)) {
+    var hSIdstr = hostSId.toString();
+    var sIdstr = sId.toString();
+    if (hSIdstr == sIdstr) {
+      var hostflag = atom.getFromName(pcpconst.PCP_HOST_FLAGS1);
+      if (!hostflag) {
+        hostflag = 0;
+      }
+      if ((hostflag & pcpconst.PCP_HOST_FLAGS1_RECV) != 0) {
         c.lastUpdated = Date.now();
-        c.hosts.sessionId = atom;
+        c.hosts[sId] = atom;
       } else {
         delete c.hosts.sessionId;
       }
@@ -106,7 +123,7 @@ function onHelo(atom, sock, host, chobj) {
   
   var addr = sock.remoteAddress + ":" + sock.remotePort;
   host[addr] = new PCPHost(
-    atom.getFromName(pcpconst.PCP_HELO_SESSION),
+    atom.getFromName(pcpconst.PCP_HELO_SESSIONID),
     atom.getFromName(pcpconst.PCP_HELO_BCID),
     atom.getFromName(pcpconst.PCP_HELO_AGENT),
     sock.remoteAddress,
@@ -130,7 +147,6 @@ function onHelo(atom, sock, host, chobj) {
   //console.log(util.inspect(oleh));
   
   oleh.write(sock);
-  
   
   return host;
 }
@@ -172,8 +188,8 @@ function PCPHandler(sock) {
   
   this.handle = function(host, chobj) {
     //console.log("Handler : PCP Handling started.");
-    if (!(host["sessionId"])) {
-      host["sessionId"] = sessionId;
+    if (!(host.sessionId)) {
+      host.sessionId = sessionId;
     }
     
     var data = this.reader.read();
