@@ -8,7 +8,7 @@ sv = net.createServer(
   function(s) {
     s.on("readable",
       function() {
-        d = s.read(10);
+        d = s.read();
         if (d != null) {
           console.log(util.inspect(d));
         }
