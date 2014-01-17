@@ -43,16 +43,18 @@ function HeaderReader(sock) {
     }
   }
   
-  this.read = function() {
-    while (true) {
-      switch (this.state) {
+}
+
+HeaderReader.prototype.read = function() {
+  while (true) {
+    switch (this.state) {
       case "INITIAL":
       case "":
         this.header = this.socket.read(4);
         if (!(this.header)) {
           return null;
         }
-        
+
         if (decoder.write(this.header == "pcp\n")) {
           console.log("Router : PCP header detected.");
           this.state = "WAITPCPLENGTH";
@@ -62,7 +64,7 @@ function HeaderReader(sock) {
           continue;
         }
         break;
-        
+
       case "WAITPCPLENGTH":
         this.header = this.socket.read(4);
         if (!(this.header)) {
@@ -75,7 +77,7 @@ function HeaderReader(sock) {
         this.state = "WAITPCPVERSION";
         continue;
         braek;
-        
+
       case "WAITPCPVERSION":
         this.header = this.socket.read(4);
         if (!(this.header)) {
@@ -85,7 +87,7 @@ function HeaderReader(sock) {
         this.state = "INITIAL";
         return new PCPRequest(ver);
         break;
-        
+
       case "WAITHTTPHEADER":
         var tmp = this.socket.read(1);
         if (!(this.header)) {
@@ -100,7 +102,6 @@ function HeaderReader(sock) {
         this.state = "INITIAL";
         return parseHttpHeader(decoder.write(header));
         break;
-      }
     }
   }
 }
