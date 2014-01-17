@@ -20,7 +20,7 @@ function startPCPServer(port, chobj) {
   var co = chobj;
   return function(req, res, next) {
     res.locals.channels = co.getall();
-    console.log(util.inspect(res.locals.channels));
+    //console.log(util.inspect(res.locals.channels));
     next();
   }
 }

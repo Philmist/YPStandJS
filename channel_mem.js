@@ -39,7 +39,7 @@ channel.set = function(chanid, obj) {
   chan_list[chanid].album = track.getFromName(pcpconst.PCP_CHAN_TRACK_ALBUM) || '';
   chan_list[chanid].trackUrl = track.getFromName(pcpconst.PCP_CHAN_TRACK_URL) || '';
   chan_list[chanid].bitrate  = info.getFromName(pcpconst.PCP_CHAN_INFO_BITRATE) || 0;
-  chan_list[chanid].type = (info.getFromName(pcpconst.PCP_CHAN_INFO_TYPE) || '').replace(/\0/g, "");
+  chan_list[chanid].type = ((info.getFromName(pcpconst.PCP_CHAN_INFO_TYPE)) ? info.getFromName(pcpconst.PCP_CHAN_INFO_TYPE).toString() : '').replace(/\0/g, "");
   //chan_list[chanid].startFrom
   var relays = 0;
   for (var i in obj.hosts) {

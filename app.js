@@ -23,6 +23,7 @@ app.use(express.logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded());
 app.use(express.methodOverride());
+app.use(express.cookieParser());
 app.use(app.router);
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -34,6 +35,7 @@ if ('development' == app.get('env')) {
 var channel_obj = channel.channel_mem;
 var channel_list = peca_middle.startPCPServer(7146, channel_obj);
 app.get('/', channel_list, routes.index);
+app.post('/setCookie', routes.setCookie);
 //app.get('/users', user.list);
 
 http.createServer(app).listen(app.get('port'), function(){

@@ -121,7 +121,7 @@ function onHelo(atom, sock, host, chobj) {
   console.log("Handler : PCP_HELO");
   //console.log(util.inspect(atom));
   
-  var addr = sock.remoteAddress + ":" + sock.remotePort;
+  var addr = toStringRemoteAddressPort(sock);
   host[addr] = new PCPHost(
     atom.getFromName(pcpconst.PCP_HELO_SESSIONID),
     atom.getFromName(pcpconst.PCP_HELO_BCID),
@@ -133,8 +133,8 @@ function onHelo(atom, sock, host, chobj) {
   );
   host[addr].method = "PCP";
   
-  console.log("Handler : " + addr + " 's host info is");
-  console.log(util.inspect(host[addr]));
+  //console.log("Handler : " + addr + " 's host info is");
+  //console.log(util.inspect(host[addr]));
   
   
   var oleh = new pcpatom(pcpconst.PCP_OLEH, [], null);
@@ -201,7 +201,17 @@ function PCPHandler(sock) {
     //console.log(util.inspect(data));
     
     //console.log("Handler_Main : " + util.inspect(chobj));
-    host = processAtom(data, sock, host, chobj);
+    try {
+      host = processAtom(data, sock, host, chobj);
+    } catch (e) {
+      var quitbuf = new Buffer(4);
+      quitbuf.writeUInt32LE(pcpconst.PCP_ERROR_QUIT+pcpconst.PCP_ERROR_GENERAL, 0);
+      var quitAtom = new pcpatom(pcpconst.PCP_QUIT, null, quitbuf);
+      quitAtom.write(sock);
+      delete host[toStringRemoteAddressPort(sock)];
+      console.log("Handler : Exeception detected ...");
+      console.log(util.inspect(e));
+    }
     
     return host;
   }

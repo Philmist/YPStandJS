@@ -3,14 +3,29 @@ extends layout
 block content
   h1= title
   p ようこそ #{title} へ
-  p= test
   dl
     - for (var i in channels)
-      dt= i
-      - if (channels[i].lastUpdated)
-        dd= "LastUpdated: " + channels[i].lastUpdated.toString()
-      - if (channels[i].info)
-        dd= "Info: " + channels[i].info
-      - if (channels[i].track)
-        dd= "Track: " + channels[i].track
+      dt
+        a(href="http://"+pecaAddr+":"+pecaPort+"/pls/"+i+"?tip="+channels[i].tracker)= channels[i].name ? channels[i].name : "名無し"
+      dd
+        dl
+          dt ジャンル
+          - if (channels[i].genre)
+            dd= channels[i].genre
+          dt 最終更新
+          - if (channels[i].lastUpdated)
+            dd= (new Date(channels[i].lastUpdated)).toString()
+          dt リレー
+          - if (channels[i].tracker)
+            dd= channels[i].directs.toString() + " / " + channels[i].relays.toString()
+
+  form(method="POST" action="/setCookie")
+    dl
+      dt Peercastアドレス
+      dd
+        input(type="text" name="pecaAddr" value=pecaAddr)
+      dt ポート
+      dd
+        input(type="text" name="pecaPort" value=pecaPort)
+    input(type="submit" name="submit" value="OK")
 
