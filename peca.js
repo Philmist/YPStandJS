@@ -382,65 +382,66 @@ PCPAtom.PCPAtomReader = function(stream) {
   this.stream = stream;
   this.atom = {};
 
-  this.read = function() {
-    while (true) {
-      //console.log("PCPAtom Reader : state " + this.state);
-      switch (this.state) {
-        case "":
-        case "INITIAL":
-          var buf = this.stream.read(8);
-          if (!(buf)) {  // Can't read from stream
-            return null;
+}
+
+PCPAtom.PCPAtomReader.prototype.read = function() {
+  while (true) {
+    //console.log("PCPAtom Reader : state " + this.state);
+    switch (this.state) {
+      case "":
+      case "INITIAL":
+        var buf = this.stream.read(8);
+        if (!(buf)) {  // Can't read from stream
+          return null;
+        } else {
+          var cmdstr = buf.toString('utf8',0,4);  // cmd must be 4 or less letters
+          cmdlen = buf.readUInt32LE(4);
+          //console.log("PCPAtom Reader : cmd '"+cmdstr+"'");
+          if ((cmdlen & 0x80000000) != 0) {  // cmd has children
+            this.atom.childlength = cmdlen & 0x7fffffff;
+            //console.log("PCPAtom Reader : has child x " + this.atom.childlength.toString());
+            this.state = "WAITCHILD";
+            this.atom.command = cmdstr;
+            this.atom.childreader = new PCPAtom.PCPAtomReader(this.stream);
+            this.atom.children = [];
+            continue;
           } else {
-            var cmdstr = buf.toString('utf8',0,4);  // cmd must be 4 or less letters
-            cmdlen = buf.readUInt32LE(4);
-            //console.log("PCPAtom Reader : cmd '"+cmdstr+"'");
-            if ((cmdlen & 0x80000000) != 0) {  // cmd has children
-              this.atom.childlength = cmdlen & 0x7fffffff;
-              //console.log("PCPAtom Reader : has child x " + this.atom.childlength.toString());
-              this.state = "WAITCHILD";
-              this.atom.command = cmdstr;
-              this.atom.childreader = new PCPAtom.PCPAtomReader(this.stream);
-              this.atom.children = [];
-              continue;
-            } else {
-              this.state = "WAITCONTENTS";
-              this.atom.command = cmdstr;
-              this.atom.length = cmdlen;
-              continue;
-            }
+            this.state = "WAITCONTENTS";
+            this.atom.command = cmdstr;
+            this.atom.length = cmdlen;
+            continue;
           }
-          break;
-        case "WAITCONTENTS":
-          var buf = this.stream.read(this.atom.length);
-          //console.log("PCP Atom Reader : Length = " + this.atom.length.toString());
-          if (!(buf)) {
-            return null;
+        }
+        break;
+      case "WAITCONTENTS":
+        var buf = this.stream.read(this.atom.length);
+        //console.log("PCP Atom Reader : Length = " + this.atom.length.toString());
+        if (!(buf)) {
+          return null;
+        } else {
+          var res = new PCPAtom(this.atom.command, null, buf);
+          this.state = "INITIAL";
+          this.atom = {};
+          return res;
+        }
+        break;
+      case "WAITCHILD":
+        var child = this.atom.childreader.read();
+        if (!(child)) {
+          return null;
+        } else {
+          this.atom.children.push(child);
+          this.atom.childlength = this.atom.childlength - 1;
+          if (this.atom.childlength > 0) {
+            continue;
           } else {
-            var res = new PCPAtom(this.atom.command, null, buf);
-            this.state = "INITIAL";
-            this.atom = {};
-            return res;
-          }
-          break;
-        case "WAITCHILD":
-          var child = this.atom.childreader.read();
-          if (!(child)) {
-            return null;
-          } else {
-            this.atom.children.push(child);
-            this.atom.childlength = this.atom.childlength - 1;
-            if (this.atom.childlength > 0) {
-              continue;
-            } else {
-              var res = new PCPAtom(this.atom.command, this.atom.children, null);
+            var res = new PCPAtom(this.atom.command, this.atom.children, null);
             this.state = "INITIAL";
             this.atom = {};
             return res;
           }
         }
         break;
-      }
     }
   }
 }
