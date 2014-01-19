@@ -143,7 +143,7 @@ function onHelo(atom, sock, host, chobj) {
   oleh.setFromName(pcpconst.PCP_HELO_SESSIONID, sessionId);
   oleh.setFromName(pcpconst.PCP_HELO_VERSION, 1218);
   oleh.setFromName(pcpconst.PCP_HELO_REMOTEIP, sock.remoteAddress);
-  oleh.setFromName(pcpconst.PCP_HELO_PORT, sock.localPort);
+  oleh.setFromName(pcpconst.PCP_HELO_PORT, host[addr].port);
   console.log("Handler : Send OLEH");
   //console.log(util.inspect(oleh));
   
