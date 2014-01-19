@@ -108,6 +108,7 @@ function onHost(atom, sock, host, chobj) {
 
 function onQuit(atom, sock, host, chobj) {
   console.log("Handler : PCP_QUIT");
+  chobj.del(host[toStringRemoteAddressPort(sock)].sessionId);
   delete host[toStringRemoteAddressPort(sock)];
   var tmpbuf = Buffer(4);
   tmpbuf.writeUInt32LE(pcpconst.PCP_ERROR_QUIT+pcpconst.PCP_ERROR_GENERAL, 0);
