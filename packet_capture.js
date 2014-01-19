@@ -19,6 +19,6 @@ sv = net.createServer(
 
 sv.listen(7146,
   function() {
-    console.log("Sever listen at port 7146.");
+    console.log("Sever listen on port 7146.");
   }
 );
