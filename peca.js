@@ -254,7 +254,12 @@ PCPAtom.prototype.getValue = function() {
       return this.content.readUInt32LE(0);
       break;
     case "ip":
-      return ip.toString(this.content);
+      var tmpip = Buffer(4);
+      tmpip[3] = this.content[0];
+      tmpip[2] = this.content[1];
+      tmpip[1] = this.content[2];
+      tmpip[0] = this.content[3];
+      return ip.toString(tmpip);
       break;
     case "short":
       return this.content.readUInt16LE(0);
@@ -297,7 +302,12 @@ PCPAtom.prototype.setValue = function(v) {
       this.content.writeUInt32LE(v, 0);
       break;
     case "ip":
-      this.content = ip.toBuffer(v);
+      var tmpip = ip.toBuffer(v);
+      this.content = new Buffer(4);
+      this.content[0] = tmpip[3];
+      this.content[1] = tmpip[2];
+      this.content[2] = tmpip[1];
+      this.content[3] = tmpip[0];
       break;
     case "short":
       this.content = new Buffer(2);

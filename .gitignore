@@ -7,4 +7,6 @@ vendor/gems/*
 !vendor/gems/cache/
 .sass-cache/*
 *~
+*.html
+Thumbs.db
 

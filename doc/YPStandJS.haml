@@ -1,0 +1,530 @@
+-# vim: fileencoding=utf-8
+!!! 5
+%head
+  %title YPを作って学ぶJavascript
+%body
+  %section
+    %h1 YPを作って学ぶJavascript
+    %section
+      %h2 前書き
+      %section
+        %h3 この文書について
+        %p
+          この文書はnode.jsを使ってJavascriptを勉強し始めたど素人が、
+          YPを作ることによっていろいろ学習していく過程をまとめたものです。
+        %p
+          もしも、この文書が、何かのお役に立つなら幸いです。
+      %section
+        %h3 注意点
+        %p
+          この文書はあくまでも一人の主観と独学によって書かれています。
+          したがって、Javascriptやnode.jsの一般的なセオリーから外れていることが多いかもしれません。
+          もし、そのようなことがあったり、あるいは何らかの間違いがあったとしても、ご笑覧いただければと思います。
+    %section
+      %h2 node.jsで遊ぼう
+      %p
+        この章ではnode.jsの紹介と導入、そして簡単なJavascriptプログラムについて学習します。
+      %section
+        %h3 node.jsとは何か
+        %p
+          これからYPを作るにあたって、
+          node.jsというソフトを使っていくわけですが、
+          簡単にこのソフトを紹介したいと思います。
+        %p
+          node.jsはChromeのJavascriptエンジン(V8エンジンと呼ばれています)を使った、
+          軽量でありかつ高速にネットワークアプリケーションを動かすためのプラットフォームです。
+          その性能は
+          %a{:href=>"http://nodejs.org/industry/"}多数の企業で使われている
+          ことからも折り紙付きといえるでしょう。
+        %p
+          大きな特徴は、イベント駆動であり、ノンブロッキングでほぼすべての動作が実行されるということです。
+          この特徴はプログラムを作る際に大きく関わってくるので、また後ほど説明します。
+      %section
+        %h3 node.jsのダウンロードとインストール
+        %p WindowsでもMacでもインストールは簡単です。
+        %p
+          %a{:href=>"http://nodejs.org/download/"}公式のダウンロードページ
+          にインストーラがあるのでそれをダウンロードして実行するだけです。
+          もちろん、Windowsの場合には管理者権限など考慮することをお忘れなく。
+        %p
+          Linux用のバイナリも配布されていますが、
+          ディストリビューションで用意されてるパッケージマネージャを使う方が無難でしょう。
+      %section
+        %h3 npmとは
+        %p
+          npmとはnode.js専用のパッケージマネージャです。
+          Rubyに親しみがある人ならgem、
+          Pythonに親しみがある人ならpipと言えばわかるでしょうか。
+          これを使うことによって、簡単に依存関係を意識することなく、パッケージを導入することができます。
+        %p
+          なお、Windowsのインストーラを使った場合、npmを使う際には若干落とし穴があります。
+          それは環境変数
+          %code NODE_PATH
+          を設定することです。
+          具体的には
+          %a{:href=>"http://sucrose.hatenablog.com/entry/20120315/p1"} このページあたり
+          を参照するとよいでしょう。
+      %section
+        %h3 node.jsを動かしてみる
+        %p
+          インストールは出来ましたか？
+          ではnode.jsを動かしてみましょう。
+        %figure
+          %img{:src=>'./img/nodejs_initial.jpg'}
+          %figcaption
+            node.js(node.exe)起動時の画面
+        %p
+          node.jsは何も指定せずに起動すると、
+          このように単純な画面が表示されます。
+          Pythonのそれ、もしくはRubyのirbと似たようなものだと思っていただけるといいです。
+        %p
+          では、最初のお約束、"Hello, World!"を表示させてみましょう。
+        %figure
+          %img{:src=>'./img/nodejs_console_hello.jpg'}
+          %figcaption
+            node.jsで"Hello, World!"
+        %p
+          簡単ですね？
+          コンソールを終了させるには、(Windowsの場合)CTRL+Cを2回押してください。
+        %figure
+          %img{:src=>'./img/nodejs_console_quit.jpg'}
+          %figcaption
+            node.jsを終了させる
+      %section
+        %h3 Hello,World! プログラム
+        %p
+          この節ではHello, World!プログラムを書くことで、
+          簡単にJavascriptを紹介していきます。
+        %section
+          %h4
+            %abbr{:title=>'Mozilla Developer Network'}MDN
+            のJavascriptガイドとリファレンス
+          %p
+            これからJavascriptの説明などをしていくわけですが、
+            その前にいくつかリファレンスの紹介をしていきたいと思います。
+          %p
+            まずはJavascript自体のリファレンスですが、
+            これはMDNの
+            %a{:href=>'https://developer.mozilla.org/ja/docs/Web/JavaScript/Guide'}ガイド
+            と
+            %a{:href=>'https://developer.mozilla.org/ja/docs/Web/JavaScript/Reference'}リファレンス
+            が非常によい資料になると思います。
+            正確にはJavascriptというより、
+            ECMAScriptの資料なのですが、
+            ブラウザごとの対応状況も載ってたりするなど非常に詳しいものです。
+        %section
+          %h4
+            node.jsのAPIリファレンス
+          %p
+            node.jsにもリファレンスは提供されています。
+            %a{:href=>'http://nodejs.org/api/'}これがnode.jsのAPIリファレンス(英語)
+            です。
+            %a{:href=>'http://nodejs.jp/nodejs.org_ja/api/'}有志による日本語リファレンス
+            も整備されています。
+          %p
+            node.jsのプログラムを読み進める時、書いていく時には
+            これらの文書に頼ると非常にはかどることでしょう。
+        %section
+          %h4
+            関数の書き方
+          %section
+            %h5 名前あり関数
+            %p
+              では実際に"Hello, World!"プログラムを書いてみましょう。
+              今度のプログラムは以前とは少々違うものです。
+              次のコードをあなたのお好みのテキストエディタで打ち込み、
+              文字コードをUTF-8にして保存してください。
+            %pre
+              :preserve
+                function printHello() {
+                  console.log("Hello, World!");
+                  return;
+                }
+                printHello();
+            %p
+              私はこのプログラムをfunchello.jsという名前で保存しました。
+              では、実際に実行してみましょう。
+            %figure
+              %img{:src=>'./img/funchello.jpg'}
+              %figcaption
+                funchello.jsを実行した様子
+            %p
+              期待した通りの結果が出たと思います。
+              Javascriptでは関数を
+              %code function 名前(引数1, 引数2, ...) { 文; }
+              という形で定義します。
+          %section
+            %h5 無名関数(あるいはすべてがオブジェクトということ)
+            %p 今度は次のコードを実行してみてください。
+            %pre
+              :preserve
+                var hello = function(v) {
+                  console.log(v);
+                  return;
+                };
+                hello("Hello, World!");
+            %figure
+              %img{:src=>'./img/funchello2.jpg'}
+              %figcaption
+                やっぱり同じ結果になる
+            %p
+              このように同じ結果になったと思います。
+              Javascriptでは(宣言しなくても使えますが)、
+              変数を
+              %code var 変数名 = 変数の中身;
+              というようにして宣言しますが、
+              では変数helloに入れられているものは何でしょうか。
+            %p
+              それはもちろん関数です。
+              Javascriptでは関数もオブジェクトであり、
+              関数は名前を書かなくても宣言できるのです。
+              オブジェクトを宣言するにはどうするのか、ということについては、
+              ずっと後のほうで説明します。
+          %section
+            %h5 関数を返すということ
+            %p
+              ついてこれているでしょうか？
+              今度はかなり変わった形で、やはり同じ結果を出力するプログラムを書きます。
+            %pre
+              :preserve
+                function print(v) {
+                  return function() {
+                    console.log(v);
+                  };
+                }
+                var hello = print("Hello, World!");
+                hello();
+            %p 実行してみましょう。
+            %figure
+              %img{:src=>'./img/funchello3.jpg'}
+              %figcaption
+                関数をもらって実行する
+            %p
+              理解できたでしょうか？
+              関数の中で、渡された引数を使う関数を返しています。
+              こういうテクニックはちょくちょく使われることがあるので、
+              覚えておくと若干幸せになれます。
+              もっと詳しく知りたい方は
+              %a{:href=>'https://developer.mozilla.org/ja/docs/Web/JavaScript/Guide/Closures'}MDNガイドの「クロージャ」
+              を見てみるとよいでしょう。
+          %section
+            %h5 モジュールをエクスポートする、そして使う
+            %p
+              では今度は次のコードをfunchello4.jsという名前で保存してください。
+            %pre
+              :preserve
+                function printHello() {
+                  console.log("Hello, World!");
+                }
+                exports.printHello = printHello;
+            %p
+              これを直接実行しないでくださいね？
+              これを保存したディレクトリに移動して、node.jsを起動してみて、
+              次のように入力してみてください。
+              先頭の
+              %code &gt;
+              はnode.jsのプロンプトです。
+            %pre
+              :preserve
+                > var funchello4 = require('./funchello4');
+                > funchello4.printHello();
+            %figure
+              %img{:src=>'./img/funchello4.jpg'}
+              %figcaption
+                エクスポートして他のところで使う例
+            %p
+              この例でわかるように、
+              %code exports.オブジェクト名 = 外に出したいオブジェクト;
+              とすることで、他のファイルから関数などを使うことができます。
+            %p
+              逆に使いたいファイルからは、
+              %code var 変数名 = require('使いたいモジュール');
+              とすることで、以降、
+              %code 変数名.エクスポートされたオブジェクト
+              という形で使うことができます。
+    %section
+      %h2 YPStand(YP大地に立つ)について
+      %p
+        この章では、YPStand(YP大地に立つ)を解析することで、
+        YP実装に必要なPCPプロトコルを解説します。
+      %section
+        %h3 そもそもYPStand(YP大地に立つ)とは何か
+        %p
+          YPStand(もしくはYP大地に立つ、以下YPStand)とは、あれくまさんが作った、
+          Peercast本体を使わない、簡易YPサーバーです。
+          Peercast本体を使わず、しかもRubyで書かれたソースが添付されているので、
+          YPに必要なPCPプロトコルを簡単に解析することができます。
+      %section
+        %h3 YPStandソースのざっくりした解説
+        %section
+          %h4 ソースを読む、その前に
+          %p
+            YPStandはRubyで書かれています。
+            ですから、読む側にはある程度Rubyの知識が必要です。
+            お手元に
+            %a{:href=>'http://docs.ruby-lang.org/ja/2.1.0/doc/index.html'}Rubyのリファレンス
+            を用意してお読みください。
+            Rubyがわからない場合は、後ろの方でPCPプロトコルについてまとめてありますので、
+            そちらまで飛ばしてもかまいません。
+        %section
+          %h4 初めはエントリポイントから
+          %p
+            YPStandはypstand.rbがエントリポイント(プログラムの開始時点)になります。
+            その中で重要なのは以下の行です。
+          %pre
+            :preserve
+              $root = PCPRootServer.new(
+                Settings['BindAddress']    || '0.0.0.0',
+                Settings['PCPPort']        || 7144,
+                Settings['AgentName']      || 'YPStand',
+                Settings['MaxConnections'] || 64
+              )
+          %p
+            これは
+            %code $root
+            というグローバル変数(Rubyでは$で始まる変数はグローバル変数です)に、
+            PCPRootServerのインスタンスを作成して代入しています。
+            %code ||
+            は
+            %code 1 || 2
+            と書かれた場合、1が真ならば1、そうでないならば2という演算子です(この演算子はJavascriptでも使えます)。
+          %p
+            ではこのPCPRootServerはどこで定義されているのでしょうか。
+            それは頭のrequireを見ていけばわかります。
+          %pre
+            :preserve
+              require 'yaml'
+              require 'webrick'
+              require 'ypstand/yp'
+              require 'ypstand/channelinfo'
+              require 'ypstand/utils'
+          %p
+            結論から言うと、PCPRootServerは
+            %code ypstand/yp.rb
+            で定義されています。
+            ではそのファイルを見ていきましょう。
+        %section
+          %h4 PCPRootServerでの処理の流れ
+          %p
+            PCPRootServerは標準添付ライブラリgserverを用いて実装されています。
+            gserverの使い方は
+            %a{:href=>'http://docs.ruby-lang.org/ja/2.1.0/library/gserver.html'}Rubyのgserverの項
+            を見ればすぐにわかるかと思います。
+            一番最初に見るべきは、関数serveです。
+          %pre
+            :preserve
+              def serve(sock)
+                request = read_header(sock)
+                case request
+                when PCPRequest
+                  process_client_pcp(request, sock)
+                when HTTPRequest
+                  process_client_http(request, sock)
+                else
+                  #Do nothing
+                end
+              end
+          %p
+            PCPに関する流れだけ見ると、これは簡単で、
+            <code>read_header</code>を呼び出して、
+            もらったヘッダ部分を<code>process_client_pcp</code>に渡しています。
+            最初に<code>read_header</code>を見ていきましょう。
+          %pre
+            :preserve
+              def read_header(io)
+                header = io.read(4)
+                if header=="pcp\n" then
+                  len = io.read(4).unpack('V')[0]
+                  raise "Length Error" unless len==4
+                  PCPRequest.new(io.read(4).unpack('V')[0])
+                else
+                  until /\r\n\r\n$/=~header do
+                    header &lt;&lt; io.read(1)
+                  end
+                  parse_http_header(header)
+                end
+              end
+          %p
+            まず最初にソケット(ネットワーク)から4バイトだけ読み込みます。
+            それが<code>pcp\n</code>(\nは改行文字)だったら、さらに4バイト読み込みます。
+          %p
+            <code>unpack</code>はRuby特有の機能かつ、PCPを見ていく上でも重要なので、
+            %a{:href=>'http://docs.ruby-lang.org/ja/2.1.0/class/Array.html#I_PACK'}リファレンスのテンプレート文字列
+            の項を見ながら説明していきます。
+            <code>unpack</code>は(バイナリ)文字列を配列に変換するインスタンスメソッド(関数)です。
+            この場合は<code>V</code>1文字なので、リトルエンディアンの符号なし32ビット整数を表しています。
+            PCPで他によく使われるフォーマット文字列は他に<code>C*</code>(任意長の8ビット符号なし整数)、
+            <code>Z4</code>(空きにnull文字(\0)を詰めた4文字の文字列)などがあります。
+          %p
+            つまり、ヘッダの部分をバイト列で表すとこうです。
+          %pre
+            :preserve
+              PPPPLLLLVVVV
+          %p
+            Pの部分にはPCPプロトコルを表すヘッダ、<code>"pcp\n"</code>が入ります。
+            その次のLの部分は、続くデータのバイト長をリトルエンディアン32ビット整数で表したものが入ります。
+            なお、ヘッダの場合はここは常に4であることが想定されます。
+            最後のVの部分、これはPCPのプロトコルバージョンを表しています。
+            やはりこれもリトルエンディアン32ビット整数です。
+            なお、後からわかりますが、現行のPeercastではこれも常に1です。
+          %p
+            では次に、<code>process_client_pcp</code>を見てみましょう。
+          %pre
+            :preserve
+              def process_client_pcp(request, sock)
+                raise PCPError.new('Unknown PCP Version', PCP_ERROR_QUIT+PCP_ERROR_GENERAL) unless request.version==1
+                helo = PCPAtom.read(sock)
+                raise PCPError.new('Handshake failed', PCP_ERROR_QUIT+PCP_ERROR_GENERAL) unless helo.name==PCP_HELO
+                host = on_helo(sock, helo)
+                until @closed do
+                  if IO.select([sock], [], [], 0.1) then
+                    process_atom(sock, host, PCPAtom.read(sock))
+                  end
+                end
+                PCPAtom.new(PCP_QUIT, nil, [PCP_ERROR_QUIT+PCP_ERROR_SHUTDOWN].pack('V')).write(sock)
+              rescue PCPError => e
+                PCPAtom.new(PCP_QUIT, nil, [e.quit].pack('V')).write(sock)
+              rescue PCPQuitError
+              ensure
+              end
+          %p
+            エラー処理の部分を除くと、そんなに難しいことはありません。
+            ソケットからAtomを読み取って、HELOを処理して、あとは接続が切断されるまで延々とAtomを読み取って処理しているだけです。
+            ってわかるわけないですよね？
+          %p
+            PCPAtomクラスのread関数を見てみましょう。
+            これは<code>ypstand/peca.rb</code>で定義されています。
+          %pre
+            :preserve
+              def self.read_blocking(stream, sz)
+                buf = stream.read(sz)
+                if buf then
+                  while buf.bytesize&lt;sz do
+                    res = stream.read(sz-buf.bytesize)
+                    break unless res
+                    buf &lt;&lt; res
+                  end
+                end
+                buf
+              end
+              def self.read(stream)
+                buf = self.read_blocking(stream, 8)
+                if buf then
+                  cmd, len = buf.unpack('Z4V')
+                  if (len & 0x80000000)!=0 then
+                    children = len & 0x7FFFFFFF
+                    self.new(cmd, Array.new(children) { read(stream) }, nil)
+                  else
+                    self.new(cmd, nil, self.read_blocking(stream, len))
+                  end
+                else
+                  nil
+                end
+              end
+          %p
+            <code>buf = self.read_blocking(stream, 8)</code>の部分から、
+            PCPプロトコルのヘッダは常に8バイト区切りということがわかります。
+            問題は<code>cmd, len = buf.unpack('Z4V')</code>の部分です(実は他にもread_blockingの部分には問題が隠されているのですがそれは後ほど)。
+          %pre
+            :preserve
+              CCCCLLLL
+          %p
+            ここは最初の8バイトを先のように分割しています。
+            <code>C</code>の部分はコマンド文字列(空きはnull文字で埋め)、
+            <code>L</code>の部分はこの次に続く内容のバイト長を表しています。
+            が、ちょっとここは特殊です。
+            <code>L</code>の部分をビットで表してみると次のようになります。
+          %pre
+            :preserve
+              ←上位                       下位→
+              HLLLLLLL|LLLLLLLL|LLLLLLLL|LLLLLLLL
+              |は8ビットごとの実際にはない区切り
+          %p
+            <code>H</code>のビットが重要です。
+            このビットが立っていた場合、H以外のビットで、
+            このAtomの次に子Atomがいくつ続くかを表しています。
+            単位は個数です。次に出てくるヘッダでまた同じようなことを繰り返します。
+          %p
+            では、
+            %code ypstand/yp.rb
+            の<code>process_client_pcp</code>に戻って続きを見ていきましょう。
+            次に出てくるのはこの行です。
+          %pre
+            :preserve
+              host = on_helo(sock, helo)
+          %p
+            問題のon_helo関数を見てみましょう。
+          %pre
+            :preserve
+              def on_helo(sock, atom)
+                host = Host.new
+                host.session_id   = atom[PCP_HELO_SESSIONID]
+                host.broadcast_id = atom[PCP_HELO_BCID]
+                host.agent        = atom[PCP_HELO_AGENT]
+                host.ip           = sock.peeraddr[3]
+                host.version      = atom[PCP_HELO_VERSION]
+                if atom[PCP_HELO_PING] then
+                  host.port = pcp_ping(host.session_id, sock.peeraddr[3], atom[PCP_HELO_PING])
+                else
+                  host.port = atom[PCP_HELO_PORT] || 0
+                end
+                oleh = PCPAtom.new(PCP_OLEH, [], nil)
+                oleh[PCP_HELO_AGENT]     = @agent_name
+                oleh[PCP_HELO_SESSIONID] = @session_id
+                oleh[PCP_HELO_VERSION]   = 1218
+                oleh[PCP_HELO_REMOTEIP]  = sock.peeraddr[3]
+                oleh[PCP_HELO_PORT]      = port
+                oleh.write(sock)
+                host
+              end
+          %p
+            <code>pcp_ping</code>を除けば、やっていることはそこまで難しくありません。
+            PCP_HELOというAtomの子Atomから必要な情報を保存し、
+            PCP_OLEHというAtomを作って、クライアントに送信しているわけです。
+            このHELOを受け取ったらOLEHを返すという流れは非常に重要です。
+          %p
+            <code>on_helo</code>の次は<code>process_atom</code>です。
+            コードを以下に示します。
+          %pre
+            :preserve
+              def process_atom(sock, host, atom)
+                return unless atom
+                case atom.name
+                when PCP_BCST; on_bcst(sock, host, atom)
+                when PCP_HOST; on_host(sock, host, atom)
+                when PCP_CHAN; on_chan(sock, host, atom)
+                when PCP_QUIT; on_quit(sock, host, atom)
+                end
+              end
+          %p
+            ソースを見てもらうとわかりますが、
+            PCP_HOSTとPCP_CHANというAtomにはチャンネルの情報が含まれています。
+            そして、予想されるとは思いますが、配信が終了すると、PCP_QUITというAtomが送信されてきます。
+          %p
+            これで、おおよそ、YPStandの解説は終わりです。
+            ではPCPの仕様をまとめてみましょう。
+      %section
+        %h3 YPStandからわかるPCPプロトコル仕様
+        %p
+          この節では、YPに必要なだけのPCPプロトコル仕様を解説します。
+        %section
+          %h4 PCPパケットの構造
+          %p
+            PCPパケットはヘッダとコンテンツの2つの部分に分かれており、
+            ヘッダは次のような構造をしています(1文字=1バイト/オクテット)。
+          %pre
+            :preserve
+              CCCC1234
+          %p
+            <code>C</code>の部分はnull文字(\0)で空きが埋められたコマンド文字列です。
+            たとえばPCP_HELOというAtomの場合、ここには<code>helo</code>という文字列が、
+            PCP_QUITの場合、<code>quit</code>という文字列が入ります。
+          %p
+            <code>1234</code>の部分はリトルエンディアン32ビット符号なし整数で表現された、
+            コンテンツの長さ(バイト単位)、あるいは子Atomの個数を表します。
+            リトルエンディアンなので、十進数の<code>1</code>を表すと、
+            <code>0x1,0x0,0x0,0x0</code>のような並び順になります。
+            重要なのは(順番を元通りにした後の)最上位ビットの扱いで、
+            最上位ビットが1の場合、残りのビットで子Atomの個数を表すということです。
+            この場合、このヘッダの直後に子Atomのヘッダ(とその中身)が入れ子のように表れます。
+
