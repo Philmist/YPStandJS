@@ -776,3 +776,46 @@
             %p
               では実際にデータを受け取って見ましょう。
               データを流してもらう相手はPeercastStationを使います。
+            %p
+              まずは次のような形で新規YPを追加してください。
+            %figure
+              %img{:src=>'./img/pecast_addyp.jpg'}
+              %figcaption
+                PeercastStationに新規YPを追加する
+            %p
+              そして次に、先ほどのプログラムをnode.jsで動かします。
+            %figure
+              %img{:src=>'./img/packetcapture_initial.jpg'}
+              %figcaption
+                パケットキャプチャを動かす
+            %p
+              最後に、node.jsで待ち受けしているポート(YP)に対して、配信を開始します。
+              配信ソースは用意しなくてもかまいません。
+            %figure
+              %img{:src=>'./img/pecast_broadcast.jpg'}
+              %figcaption
+                配信設定の一例
+            %figure
+              %img{:src=>'./img/packetcapture_broadcast.jpg'}
+              %figcaption
+                配信をしてみた際のnode.jsの画面
+            %p
+              終わる時はnode.jsの画面でCTRL+C、そして、PeercastStation側で通常通り配信を終了させてください。
+            %p
+              では、このnode.js側の結果について解説していきます。
+              <code>util.inspect(オブジェクト)</code>はオブジェクトを見やすい形式の文字列に変換する関数です。
+              これは非常に便利なのでよく使います。
+              ですが、整形された結果の<code>&lt;Buffer なんちゃらかんちゃら&gt;</code>とはなんでしょうか。
+            %p
+              これはnode.js特有の
+              %a{:href=>'http://nodejs.org/api/buffer.html'}Buffer型
+              と呼ばれるものです。
+              Javascriptは文字列処理に関しては非常に優秀ですが、
+              バイナリデータの処理に関しては貧弱です。
+              それを補うためにBuffer型が作られているのです。
+            %p
+              Buffer型は基本的にバイト単位でデータを扱います。
+              性質は配列によく似ており、<code>[]</code>を使うことや、
+              <code>buf.length</code>で長さを参照することもできます。
+              一番の特徴は、ネットワークなどでデータを扱うために、多数の関数が用意されていることです。
+              従って、生のデータを扱う必要のあるYPStandJSでは、Buffer型を非常に多く用いることになります。
