@@ -727,11 +727,11 @@
               node.jsはほぼすべてがノンブロッキングで実行されるので、
               <code>server.listen</code>が実行されても、すぐには待ち受けが開始されないのです。
             %p
-              では、onConnection関数の中身を見ていきましょう。
+              onConnection関数の中身を見ていきましょう。
           %section
             %h4 on(とonce)でイベントにつながる
             %p
-              onListening関数だけをもう一度抜粋します。
+              onConnection関数だけをもう一度抜粋します。
             %pre
               :preserve
                 function onConnection(socket) {
@@ -819,3 +819,130 @@
               <code>buf.length</code>で長さを参照することもできます。
               一番の特徴は、ネットワークなどでデータを扱うために、多数の関数が用意されていることです。
               従って、生のデータを扱う必要のあるYPStandJSでは、Buffer型を非常に多く用いることになります。
+        %section
+          %h3 peca.rbの定数と構造体を移植する
+          %p
+            この節ではYPStandでも最も重要な部分、ypstand/peca.rbのうち、
+            定数と構造体を移植します。
+          %section
+            %h4 定数一覧を移植する
+            %p
+              Javascriptには定数というものは、(いまのところ)ありません。
+              ですから、変数を使うわけですが、Rubyのまま移植しようとすると痛い目をみます。
+            %pre
+              :preserve
+                # ypstand/peca.rbから
+                PCP_HELO           = "helo"
+                PCP_HELO_AGENT     = "agnt"
+                (以下省略)
+            %p
+              これを素直にJavascriptで書くとこうなります。
+            %pre
+              :preserve
+                var PCP_HELO = "helo";
+                var PCP_HELO_AGENT = "agnt";
+            %p
+              なぜこれがまずいのでしょうか。
+              それは別ファイルへエクスポートする時のことを考えるとわかります。
+              変数ひとつひとつに対して、<code>exports.PCP_HELO = PCP_HELO;</code>と書かなければならなくなるのです。
+              それはあまりにも非効率的です。
+            %p
+              では何を使うべきか。
+              Rubyなどの他言語にある「連想配列」(あるキーに対して値があるようなもの)があればいいのですが、
+              Javascriptにはそれそのものはありません。ですが、似たようなものはあります。
+              それがオブジェクトです。
+            %p
+              Javascriptのオブジェクトとは何でしょうか。実は非常に単純な代物です。
+              「文字列をキーとした連想配列」。それがオブジェクトです。
+              つまり、ある文字列に対して、別の何かが結びつけられるのです。
+            %p
+              理屈はいいので実際にどうするのかを見てみましょう。
+            %pre
+              :preserve
+                var PCP_CONST = {
+                  PCP_HELO           :"helo",
+                  PCP_HELO_AGENT     :"agnt",
+                  PCP_HELO_OSTYPE    :"ostp",
+                  PCP_HELO_SESSIONID :"sid",
+                  PCP_HELO_PORT      :"port",
+                  (中略)
+                  PCP_ERROR_SHUTDOWN         :9,
+                  PCP_ERROR_NOROOT           :10,
+                  PCP_ERROR_BANNED           :11,
+                };
+                exports.PCP_CONST = PCP_CONST;
+            %p
+              Javascriptのオブジェクトは、<code>{ キー文字列 : 値, キー文字列 : 値, ... }</code>という形で作ることが出来ます。
+              そして参照、もしくは代入する場合ですが、2つのやり方があります。
+            %pre
+              :preserve
+                var obj["文字列"] = 値;
+                var obj.文字列 = 値;
+            %p
+              この2つはどちらも同じ動作をしますが、前者は変数をキー文字列にしたいときに役に立ちます(後者ではそういう使い方ができません)。
+              この文字列の部分を「プロパティ名」と呼び、値のことを「プロパティ」と呼びます。
+          %section
+            %h4 structを移植する
+            %p
+              Rubyのstructは構造体とも呼ばれ、
+              名前があるメンバ変数を持つクラスです。
+              たとえば次のように定義されます。
+            %pre
+              :preserve
+                Meow = Struct.new(:count) do
+                  def nya
+                  end
+                end
+            %p
+              この節ではstructが使われている重要な構造体、PCPAtomをどうやって移植するのかを考えながら、
+              Javascriptでのオブジェクトについて理解していこうと思います。
+            %section
+              %h5 みんなみんなオブジェクト
+              %p
+                Javascriptでは(nullとすぐ後に説明するundefinedを除いた)すべてがオブジェクトです。
+                そして標準ではstructに類するオブジェクトのコンストラクタは
+                %a{:href=>"https://developer.mozilla.org/ja/docs/Web/JavaScript/Reference/Global_Objects?redirectlocale=ja&redirectslug=JavaScript%2FReference%2FGlobal_Objects"}存在しません
+                。
+                ですから、必然的に、構造体はオブジェクトで代用することになります。
+              %p
+                まず、Rubyでの簡単な構造体を見てみましょう。
+              %pre
+                :preserve
+                  Meow = Struct.new(:name)
+              %p
+                これがRubyでの簡単な構造体の定義の仕方です。
+                では、これをJavascriptのオブジェクトを使って書いてみるとどうなるか。
+                こうなります。
+              %pre
+                :preserve
+                  function Meow(name) {
+                    this.name = name;
+                  }
+              %p
+                結局のところ、一般的なクラスのコンストラクタとして書いているわけです。
+                実際に使うときはたとえばこうします。
+              %pre
+                :preserve
+                  var cat = new Meow("chappy");
+              %p
+                ここで初めてnew演算子が出てきました。これはコンストラクタ関数から新しいオブジェクトを作るための演算子です。
+                このようにしてJavascriptでは別の関数からオブジェクトを作成します。
+            %section
+              %h5 クラス関数を作る
+              %p
+                Rubyや他の言語ではクラス関数というものを持つことができます。
+                つまり、コンストラクタから作られたインスタンスに属さず、
+                クラス(Javascriptではコンストラクタ関数)に属する関数です。
+                屁理屈はどうでもいいので実際に例を示します。
+              %pre
+                :preserve
+                  function Cat() {
+                  }
+                  Cat.cry = function() {
+                    console.log("Meow.");
+                  }
+                  Cat.cry();
+              %p
+                これだけです。
+                Javascriptでは関数も例によってオブジェクトなので、
+                それに新しくプロパティを作って関数を結びつけてやればいいのです。
