@@ -3,6 +3,7 @@
 %html
   %head
     %title YPを作って学ぶJavascript
+    %meta{"http-equiv"=>"content-type", :content=>"text/html; charset=utf-8"}
   %body
     %section
       %h1 YPを作って学ぶJavascript
@@ -946,3 +947,49 @@
                 これだけです。
                 Javascriptでは関数も例によってオブジェクトなので、
                 それに新しくプロパティを作って関数を結びつけてやればいいのです。
+            %section
+              %h5 thisってなあに？
+              %p
+                ところで構造体の移植をする際に、
+                thisという演算子(そう、thisは演算子です)が出てきました。
+                この演算子は何でしょうか。
+              %p
+                これは一言で言うと、「現在実行されている部分(コンテキスト)のオブジェクトを参照する演算子」です。
+                たとえば、これが関数内であれば関数を指しますし、
+                グローバルな部分で実行されているのなら、グローバルなオブジェクトを参照します。
+              %p
+                実際のところ、私がどうこう言うより、
+                %a{:href=>"https://developer.mozilla.org/ja/docs/Web/JavaScript/Reference/Operators/this?redirectlocale=ja&redirectslug=JavaScript%2FReference%2FOperators%2Fthis"}Mozillaのガイド
+                を見ていただけるとわかりやすいかと思います。ひどい話ですが。
+            %section
+              %h5 オブジェクトに属する関数(インスタンス関数)を作る、もしくはprototypeの説明
+              %p
+                今度は、インスタンス関数から作られた、オブジェクトに属する関数、
+                つまり他の言語で言うところのインスタンス関数を作ってみましょう。
+              %pre
+                :preserve
+                  function Cat() {
+                  }
+                  Cat.prototype.cry = function() {
+                    console.log("Meow.");
+                  }
+              %p
+                これでOKですが、ここに突如prototypeプロパティというものが出てきました(演算子ではありません)。
+                これはいったい何なのでしょうか。
+              %p
+                Javascriptでは、オブジェクトが作成されると、prototypeに定義されているプロパティを使って、初期プロパティを生成します。
+                これを利用して、他の言語にもある継承を実装することができます。たとえばMDNにあるこの例のように。
+              %pre
+                :preserve
+                  function Employee() {
+                    this.name = "";
+                    this.dept = "general";
+                  }
+                  function Manager() {
+                    this.reports = [];
+                  }
+                  Manager.prototype = new Employee();
+              %p
+                これによって、他の言語で言う、EmployeeクラスからManagerクラスへの継承を実現することができます。
+                実際に継承する代わりに、prototypeを代入することによって、初期プロパティを作るのです。
+                これが、Javascriptがプロトタイプベースとも言われる由来です。
