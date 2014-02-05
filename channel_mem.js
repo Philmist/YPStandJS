@@ -1,7 +1,6 @@
 // fileencoding=utf-8
 
 var util = require('util');
-var secret = require('secret');
 var pcpconst = require('./peca').PCP_CONST;
 var pcpatom = require('./peca').PCPAtom;
 

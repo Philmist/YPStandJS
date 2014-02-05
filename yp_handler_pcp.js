@@ -40,7 +40,7 @@ function onBcst(atom, sock, host, chobj) {
 }
 
 function onChan(atom, sock, host, chobj) {
-  //console.log("Handler : PCP_CHAN");
+  console.log("Handler : PCP_CHAN");
   //console.log(util.inspect(atom));
   
   var channelId = atom.getFromName(pcpconst.PCP_CHAN_ID);
@@ -48,7 +48,7 @@ function onChan(atom, sock, host, chobj) {
   if (!h) {
     return host;
   }
-  var c = chobj.get(channelId.toString());
+  var c = chobj.get(h.sessionId.toString());
   if (c) {
     if (c.broadcastId == h.broadcastId) {
       var aChInfo = atom.getFromName(pcpconst.PCP_CHAN_INFO);
@@ -60,7 +60,7 @@ function onChan(atom, sock, host, chobj) {
         c.track = aTrack;
       }
       c.lastUpdated = Date.now();
-      chobj.set(channelId.toString(), c);
+      chobj.set(h.sessionId.toString(), c);
     }
   } else if (h.broadcastId) {
     c = {
@@ -72,20 +72,20 @@ function onChan(atom, sock, host, chobj) {
       track : null,
       hosts : {}
     };
-    chobj.set(channelId.toString(), c);
+    chobj.set(h.sessionId.toString(), c);
   }
   
   return host;
 }
 
 function onHost(atom, sock, host, chobj) {
-  //console.log("Handler : PCP_HOST");
+  console.log("Handler : PCP_HOST");
   var sId = atom.getFromName(pcpconst.PCP_HOST_ID);
   //console.log(util.inspect(sId));
   var channelId = atom.getFromName(pcpconst.PCP_HOST_CHANID);
   var remoteAddr = toStringRemoteAddressPort(sock);
   var hostSId = host[remoteAddr].sessionId;
-  var c = chobj.get(channelId.toString());
+  var c = chobj.get(hostSId.toString());
   if ((hostSId) && (c)) {
     var hSIdstr = hostSId.toString();
     var sIdstr = sId.toString();
@@ -98,17 +98,17 @@ function onHost(atom, sock, host, chobj) {
         c.lastUpdated = Date.now();
         c.hosts[sId] = atom;
       } else {
-        delete c.hosts.sessionId;
+        delete c.hosts[sId];
       }
     }
-    chobj.set(channelId.toString(), c);
   }
   return host;
 }
 
 function onQuit(atom, sock, host, chobj) {
   console.log("Handler : PCP_QUIT");
-  chobj.del(host[toStringRemoteAddressPort(sock)].sessionId);
+  var h = host[toStringRemoteAddressPort(sock)];
+  chobj.del(h.sessionId.toString());
   delete host[toStringRemoteAddressPort(sock)];
   var tmpbuf = Buffer(4);
   tmpbuf.writeUInt32LE(pcpconst.PCP_ERROR_QUIT+pcpconst.PCP_ERROR_GENERAL, 0);

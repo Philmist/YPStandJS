@@ -142,7 +142,7 @@ function YpRouter(sock, handlers) {
       } catch (e) {
         console.log("Router : Exeception detected.");
         delete host[this.socket.remoteAddress+":"+this.socket.remotePort];
-        this.socket.close();
+        this.socket.destroy();
       }
     }
     return host;

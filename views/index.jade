@@ -5,19 +5,20 @@ block content
   p ようこそ #{title} へ
   dl
     - for (var i in channels)
-      dt
-        a(href="http://"+pecaAddr+":"+pecaPort+"/pls/"+i+"?tip="+channels[i].tracker)= channels[i].name ? channels[i].name : "名無し"
-      dd
-        dl
-          dt ジャンル
-          - if (channels[i].genre)
-            dd= channels[i].genre
-          dt 最終更新
-          - if (channels[i].lastUpdated)
-            dd= (new Date(channels[i].lastUpdated)).toString()
-          dt リレー
-          - if (channels[i].tracker)
-            dd= channels[i].directs.toString() + " / " + channels[i].relays.toString()
+      - if (channels[i].tracker)
+        dt
+          a(href="http://"+pecaAddr+":"+pecaPort+"/pls/"+channels[i].channelId.toString()+"?tip="+channels[i].tracker)= channels[i].name ? channels[i].name : "名無し"
+        dd
+          dl
+            dt ジャンル
+            - if (channels[i].genre)
+              dd= channels[i].genre
+            dt 最終更新
+            - if (channels[i].lastUpdated)
+              dd= (new Date(channels[i].lastUpdated)).toString()
+            dt リレー
+            - if (channels[i].tracker)
+              dd= channels[i].directs.toString() + " / " + channels[i].relays.toString()
 
   form(method="POST" action="/setCookie")
     dl

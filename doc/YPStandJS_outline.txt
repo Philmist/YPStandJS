@@ -65,7 +65,6 @@ YPを作って学ぶJavascript(仮題)
 -- ひたすらAtomを処理する
 --- チャンネル情報をどうやって共有するか
 --- PCP_CHANとPCP_HOSTを処理する
----- 各種情報を分離して保存する
 --- PCP_QUITを処理する
 -- YPを表示する(Expressを使う)
 --- "Express"の紹介

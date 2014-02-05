@@ -12,7 +12,7 @@ var handle = {};
 handle["PCP"] = pcp_handler.Handler;
 handle["HTTP"] = handler.HTTPHandler;
 
-var chobj = new channel.Channel();
+var chobj = channel.channel_mem;
 
 var sv = yp.startServer(7146, router.YpRouter, handle, chobj);
 

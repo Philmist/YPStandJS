@@ -1484,7 +1484,7 @@
                     } catch (e) {
                       console.log("Router : Exeception detected.");
                       delete host[this.socket.remoteAddress+":"+this.socket.remotePort];
-                      this.socket.close();
+                      this.socket.end();
                     }
                   }
                   return host;
@@ -1629,7 +1629,7 @@
             重要なのは以下です。
           %dl
             %dt セッションID(PCP_HELO_SESSIONID)
-            %dd セッションIDは接続ごとに固有に生成されるGIDです。これを利用して、YPは配信を識別します。
+            %dd セッションIDは接続ごとに固有に生成されるGIDです。
             %dt ブロードキャストID(PCP_HELO_BCID)
             %dd ブロードキャストIDはクライアント固有のGIDです。YPはこれを用いることはほとんどありませんが、これを利用してクライアントを識別することもできます。
             %dt エージェント(PCP_HELO_AGENT)
@@ -1638,3 +1638,143 @@
             YPサーバーで作らなければいけない情報もあります。それは配信者のIPアドレスと配信用のポートです。
             これら2つはYP側から教えない限り、ポートが開放されているのか、また、配信用のアドレスがいくつなのかを知ることはできません。
             したがって、YPはこれら2つの情報をPCP_OLEH Atomに含めます。配信用のポートが開いてない場合はポートを0として通知します(だからポート0なのです)。
+      %section
+        %h3 ひたすらAtomを処理します
+        %p この節ではクライアントから送られてくるAtomを処理して、YPに必要な情報を集めていく過程を記述します。
+        %section
+          %h4 チャンネル情報をどうやって共有するか
+          %p 
+            処理する前に一番問題となるのはこれです。チャンネル情報は、別のモジュール、
+            具体的にはYPで配信されているチャンネルを表示するモジュールと共有しないといけないのです。
+            ホスト情報に乗せてもいいのですが、あれは接続ベースなので表示するときに若干困る(チャンネル名から表示したりしたいときなど)のです。
+          %p
+            ではどうやって共有するのか。このコードを見てもらいましょう。
+          %pre
+            :preserve
+              var util = require('util');
+              var pcpconst = require('./peca').PCP_CONST;
+              var pcpatom = require('./peca').PCPAtom;
+
+              var chan_list = {};
+              function channel() {
+              }
+              channel.getall = function() {
+                return chan_list;
+              }
+              channel.get = function(chanid) {
+                return chan_list[chanid];
+              }
+              channel.set = function(chanid, obj) {
+                chan_list[chanid] = obj;
+                // (略、ここでチャンネル情報いろいろ整形してプロパティを作っている)
+              }
+              channel.del = function(chanid) {
+                delete chan_list[chanid];
+              }
+              exports.channel_mem = channel;
+          %p
+            このあたりの実装は
+            %a{:href=>"https://github.com/dreamerslab/node.secret"}node.secret
+            を参考にしています。
+            要するに別ファイルでグローバルなオブジェクトを作ってしまって、
+            それにアクセスする関数を作ってしまえばよいのです。
+            どーせ、チャンネル情報など1つしか持ちませんし。
+          %p
+            このような実装にする利点はほかにもあります。
+            別ファイルに分離しておけば、保存に何を使おうとも、同じ名前の関数を定義しておけば、
+            他のファイルでの変更がほぼ不要になるのです。
+            これはすばらしい利点です。
+        %section
+          %h4 PCP_CHANとPCP_HOSTを処理する
+          %p
+            では実際にAtomの処理をしていくコードを見ていきましょう。
+          %pre
+            :preserve
+              function onChan(atom, sock, host, chobj) {
+                console.log("Handler : PCP_CHAN");
+                
+                var channelId = atom.getFromName(pcpconst.PCP_CHAN_ID);
+                var h = host[toStringRemoteAddressPort(sock)];
+                if (!h) {
+                  return host;
+                }
+                var c = chobj.get(h.sessionId.toString());
+                if (c) {
+                  if (c.broadcastId == h.broadcastId) {
+                    var aChInfo = atom.getFromName(pcpconst.PCP_CHAN_INFO);
+                    if (aChInfo) {
+                      c.info = aChInfo;
+                    }
+                    var aTrack = atom.getFromName(pcpconst.PCP_CHAN_TRACK);
+                    if (aTrack) {
+                      c.track = aTrack;
+                    }
+                    c.lastUpdated = Date.now();
+                    chobj.set(h.sessionId.toString(), c);
+                  }
+                } else if (h.broadcastId) {
+                  c = {
+                    startFrom : Date.now(),
+                    lastUpdated : Date.now(),
+                    channelId : channelId,
+                    broadcastId : h.broadcastId,
+                    info : null,
+                    track : null,
+                    hosts : {}
+                  };
+                  chobj.set(h.sessionId.toString(), c);
+                }
+                
+                return host;
+              }
+              function onHost(atom, sock, host, chobj) {
+                console.log("Handler : PCP_HOST");
+                var sId = atom.getFromName(pcpconst.PCP_HOST_ID);
+                var channelId = atom.getFromName(pcpconst.PCP_HOST_CHANID);
+                var remoteAddr = toStringRemoteAddressPort(sock);
+                var hostSId = host[remoteAddr].sessionId;
+                var c = chobj.get(hostSId.toString());
+                if ((hostSId) &amp;&amp; (c)) {
+                  var hSIdstr = hostSId.toString();
+                  var sIdstr = sId.toString();
+                  if (hSIdstr == sIdstr) {
+                    var hostflag = atom.getFromName(pcpconst.PCP_HOST_FLAGS1);
+                    if (!hostflag) {
+                      hostflag = 0;
+                    }
+                    if ((hostflag & pcpconst.PCP_HOST_FLAGS1_RECV) != 0) {
+                      c.lastUpdated = Date.now();
+                      c.hosts[sId] = atom;
+                    } else {
+                      delete c.hosts[sId];
+                    }
+                  }
+                }
+                return host;
+              }
+          %p
+            このコードではPCP_BCSTの子AtomになるPCP_CHAN、PCP_HOSTの各Atomを読み取ってチャンネル情報を更新しているわけですが、
+            一番重要になるのは、チャンネルID(PCP_HOST_CHANID, PCP_CHAN_ID)です。
+            これを元にして、Peercastクライアントは視聴しに来る配信を識別しています。
+          %p
+            onChan関数では主に配信のメタデータに関する情報、例えば配信名やその説明などを処理します。
+            逆にonHost関数では配信の枝(ピア)に関する情報が送られてくるのでこれを処理します。
+        %section
+          %h4 PCP_QUIT Atomを処理する
+          %p
+            配信を終了する際には、クライアントからPCP_QUIT Atomが送られてきます。
+            このAtomが送られてきた場合、YPはチャンネル情報と接続情報を消去して、接続を切断しなければなりません。
+          %pre
+            :preserve
+              function onQuit(atom, sock, host, chobj) {
+                console.log("Handler : PCP_QUIT");
+                var h = host[toStringRemoteAddressPort(sock)];
+                chobj.del(h.sessionId.toString());
+                delete host[toStringRemoteAddressPort(sock)];
+                var tmpbuf = Buffer(4);
+                tmpbuf.writeUInt32LE(pcpconst.PCP_ERROR_QUIT+pcpconst.PCP_ERROR_GENERAL, 0);
+                var tmpatom = new pcpatom(pcpconst.PCP_QUIT, null, tmpbuf);
+                tmpatom.write(sock);
+                sock.end();
+                return host;
+              }
