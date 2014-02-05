@@ -4,6 +4,8 @@
   %head
     %title YPを作って学ぶJavascript
     %meta{"http-equiv"=>"content-type", :content=>"text/html; charset=utf-8"}
+    %meta{"http-equiv"=>"content-style-type", :content=>"text/css"}
+    %link{:rel=>"stylesheet", :href=>"style.css", :type=>"text/css"}
   %body
     %section
       %h1 YPを作って学ぶJavascript
@@ -978,7 +980,7 @@
                 これはいったい何なのでしょうか。
               %p
                 Javascriptでは、オブジェクトが作成されると、prototypeに定義されているプロパティを使って、初期プロパティを生成します。
-                これを利用して、他の言語にもある継承を実装することができます。たとえばMDNにあるこの例のように。
+                これを利用して、他の言語にある継承を実装することができます。たとえばMDNにあるこの例のように。
               %pre
                 :preserve
                   function Employee() {
@@ -993,3 +995,646 @@
                 これによって、他の言語で言う、EmployeeクラスからManagerクラスへの継承を実現することができます。
                 実際に継承する代わりに、prototypeを代入することによって、初期プロパティを作るのです。
                 これが、Javascriptがプロトタイプベースとも言われる由来です。
+        %section
+          %h3 Atomを読み込んでみる
+          %p この節では、YPとPeercast間の通信単位になるAtomを実際に読み込んでみます。
+          %section
+            %h4 (失敗する)素直なAtomの読み込み方
+            %p
+              では、今までのことを踏まえて、素直にAtomを読み込んでみましょう。
+              <code>ypstand/peca.rb</code>では次のように読み込み部分が書かれていました。
+            %pre
+              :preserve
+                def self.read_blocking(stream, sz)
+                  buf = stream.read(sz)
+                  if buf then
+                    while buf.bytesize&lt;sz do
+                      res = stream.read(sz-buf.bytesize)
+                      break unless res
+                      buf &lt;&lt; res
+                    end
+                  end
+                  buf
+                end
+                def self.read(stream)
+                  buf = self.read_blocking(stream, 8)
+                  if buf then
+                    cmd, len = buf.unpack('Z4V')
+                    if (len &amp; 0x80000000)!=0 then
+                      children = len &amp; 0x7FFFFFFF
+                      self.new(cmd, Array.new(children) { read(stream) }, nil)
+                    else
+                      self.new(cmd, nil, self.read_blocking(stream, len))
+                    end
+                  else
+                    nil
+                  end
+                end
+            %p
+              これら2つの関数がAtom構造体の中に、クラス関数として入っていた(Rubyではself.functionでクラス関数を定義できます)わけです。
+              read_blockingを考慮せずに、素直にself.read関数を移植してみましょう。
+              こうなります。
+            %pre
+              :preserve
+                function PCPAtom(name, children, content) {
+                  this.name = name ? name : "";
+                  this.children = children ? children : [];
+                  this.content = content ? content : new Buffer(0);
+                }
+                PCPAtom.read(stream) {
+                  var buf = stream.read(8);
+                  var cmdstr = buf.toString('utf8', 0, 4);
+                  var cmdlen = buf.readUInt32LE(4);
+                  if ((cmdlen &amp; 0x80000000) != 0) {
+                    var children = cmdlen &amp; 0x7FFFFFFF;
+                    var childatom = [];
+                    for (var i = 0; i &lt; children; i++) {
+                      var tmpatom = PCPAtom.read(stream);
+                      childatom.push(tmpatom);
+                    }
+                    return new PCPAtom(cmdstr, children, null);
+                  } else {
+                    return new PCPAtom(cmdstr, null, stream.read(cmdlen));
+                  }
+                }
+            %p
+              おおよそ、このような構成になるでしょう。
+              非常にシンプルです。
+              ですがこれでは一部の状況において正常なAtomが読み込まれません。
+              それはなぜでしょうか。
+          %section
+            %h4 なぜAtomが読み込めないのか
+            %p
+              なぜAtomが読み込まれない状況が起きるのでしょうか。
+              それは簡単です。
+              stream.read関数(これはstream.Readableクラスのインスタンス関数です)は指定した長さが読み込めない時に「nullを返す」からです。
+              ですから、先のRubyのコードではread_blockingという関数を実装して、指定した長さが必ず読み込まれるようにしています。
+              では、node.jsでもこうすればよいのでしょうか？
+            %p
+              結論から言うとそれでは駄目なのです。
+              なぜならば、node.jsはシングルスレッドで動作しているために、
+              ある動作の間待ってしまうと、他の動作、たとえば他クライアントからのYPへの登録がその間できなくなってしまうのです。
+              それはあまりよろしくありません。
+              なお、Rubyではなぜ問題無いのかというと、クライアントの接続ごとに別スレッドを使っているからです。
+            %p
+              どのようにすればこの「ブロッキング」状態を解消して、「ノンブロッキング」な動作にできるのでしょうか。
+              そのために私は少々複雑なロジックを導入しました。
+          %section
+            %h4 ステート(状態)という考え方
+            %p
+              要するに、nullを返されても、何処まで読み込んだのか、という状態を保持できればいいわけです。
+              これをオブジェクトの中に「ステート(状態)」という形で保持します。
+              次にデータが来たときは、ステートとすでに読み込んだデータを見て、Atomを構成していくのです。
+            %p
+              では実際にどのようなコードなのか見てみましょう。
+            %pre
+              :preserve
+                PCPAtom.PCPAtomReader = function(stream) {
+                  this.state = "INITIAL";
+                  this.stream = stream;
+                  this.atom = {};
+                }
+                PCPAtom.PCPAtomReader.prototype.read = function() {
+                  while (true) {
+                    switch (this.state) {
+                      case "":
+                      case "INITIAL":
+                        var buf = this.stream.read(8);
+                        if (!(buf)) {  // Can't read from stream
+                          return null;
+                        } else {
+                          var cmdstr = buf.toString('utf8',0,4);  // cmd must be 4 or less letters
+                          cmdlen = buf.readUInt32LE(4);
+                          if ((cmdlen & 0x80000000) != 0) {  // cmd has children
+                            this.atom.childlength = cmdlen & 0x7fffffff;
+                            this.state = "WAITCHILD";
+                            this.atom.command = cmdstr;
+                            this.atom.childreader = new PCPAtom.PCPAtomReader(this.stream);
+                            this.atom.children = [];
+                            continue;
+                          } else {
+                            this.state = "WAITCONTENTS";
+                            this.atom.command = cmdstr;
+                            this.atom.length = cmdlen;
+                            continue;
+                          }
+                        }
+                        break;
+                      case "WAITCONTENTS":
+                        var buf = this.stream.read(this.atom.length);
+                        if (!(buf)) {
+                          return null;
+                        } else {
+                          var res = new PCPAtom(this.atom.command, null, buf);
+                          this.state = "INITIAL";
+                          this.atom = {};
+                          return res;
+                        }
+                        break;
+                      case "WAITCHILD":
+                        var child = this.atom.childreader.read();
+                        if (!(child)) {
+                          return null;
+                        } else {
+                          this.atom.children.push(child);
+                          this.atom.childlength = this.atom.childlength - 1;
+                          if (this.atom.childlength > 0) {
+                            continue;
+                          } else {
+                            var res = new PCPAtom(this.atom.command, this.atom.children, null);
+                            this.state = "INITIAL";
+                            this.atom = {};
+                            return res;
+                          }
+                        }
+                        break;
+                    }
+                  }
+                }
+            %p
+              長いコードになってしまいましたが、解説していきます。
+            %p
+              まず最初に"INITIAL"ステートから開始します。
+              このステートではコマンドと内容の長さを読み取ります。
+              もしもコマンドが子を持つようであれば、子の数とコマンドをいったん保存し、
+              読み取りクラスを新たに作って、"WAITCHILD"ステートに移行します。
+              子を持たないようであれば、コマンドと内容の長さを保存して、"WAITCONTENTS"ステートに移行します。
+            %p
+              "WAITCONTENTS"ステートではただ単に、ひたすら指定された内容長のデータが来るまで待ちます。
+              内容が来ればAtomを生成して返します。
+            %p
+              "WAITCHILD"ステートでは作った読み取りクラスを使って子を読み取り、
+              一つずつ子を追加していきます。
+              読み取り終わったらそのAtomを返します。
+            %p
+              重要なのはすべてのステートにおいて、
+              必要なデータが読み取れなかった時はいったんnullを返すということです。
+              このことによって、動作をブロックすることなく、呼び出し元に処理を返すことができるわけです。
+        %section
+          %h3 PCPハンドシェイクをする
+          %p
+            この節では、PCPプロトコルの基礎となる、PCPハンドシェイクを実際に行います。
+          %section
+            %h4 PCPハンドシェイクの流れ(復習)
+            %p
+              まず、PCPハンドシェイクとはどんなものかを簡単に復習します。
+            %ol
+              %li
+                クライアントがYPにPCPのバージョンを含んだヘッダを送る
+              %li
+                クライアントがYPにブロードキャストID、セッションIDなどを含んだPCP_HELO Atomを送信する
+              %li
+                YPはクライアントに自身のクライアント名、セッションID、クライアントをYPから見たときの配信ポートとアドレスを含むPCP_OLEH Atomを送信する
+            %p
+              この手順を踏むと、あとはPCP_QUIT Atomがどちらかから送信されるまで、クライアントはYPに配信情報を送ることができます。
+              具体的にはPCP_BCST Atomの子Atom、PCP_HOST Atom、PCP_CHAN Atomで配信情報を送ることになります。
+          %section
+            %h4 Atomを送信できる形に整形する
+            %p
+              Atomには様々な種類があります。
+              どのAtomがどの種類になるのかはypstand/peca.rbでPacketTypeとして定義されています。
+            %pre
+              :preserve
+                PacketType = {
+                  PCP_HELO               => :parent,
+                  PCP_OLEH               => :parent,
+                  PCP_CHAN               => :parent,
+                  PCP_CHAN_PKT           => :parent,
+                  PCP_CHAN_INFO          => :parent,
+                  (略)
+            %p
+              ちなみにこれをJavascriptで書くとこうなります。
+            %pre
+              :preserve
+                var PacketType = {};
+                PacketType[PCP_CONST.PCP_HELO              ]="parent";
+                PacketType[PCP_CONST.PCP_OLEH              ]="parent";
+                PacketType[PCP_CONST.PCP_CHAN              ]="parent";
+                PacketType[PCP_CONST.PCP_CHAN_PKT          ]="parent";
+                PacketType[PCP_CONST.PCP_CHAN_INFO         ]="parent";
+                (略)
+            %p
+              PacketTypeはAtomに応じて以下の種類が定義されています。
+            %dl
+              %dt parent
+              %dd このAtomは子Atomを持つAtomです
+              %dt byte
+              %dd 8ビット符号なし整数を内容とするAtomです
+              %dt int
+              %dd 32ビット符号なし整数を内容とするAtomです
+              %dt short
+              %dd 16ビット符号なし整数を内容とするAtomです
+              %dt string
+              %dd null終端utf-8エンコード文字列を内容とするAtomです
+              %dt bytes
+              %dd バイト列を内容とするAtomです
+              %dt gid
+              %dd 16バイトのバイト列を内容とするAtomです。セッションIDなどで使われます。
+              %dt ip
+              %dd IPアドレスを内容とするAtomです。下位バイトから上位バイトの順に並べられます。
+            %p
+              Ruby版のYPStandではAtomの内容を取り出したり、あるいは内容を代入したりという操作を
+              演算子オーバーロードとして実装していますが、
+              Javascriptには演算子オーバーロードは存在しません。
+              従って、YPStandJSでは通常の関数によって、Atomの内容を作成したりすることになります。
+            %pre
+              :preserve
+                PCPAtom.prototype.getValue = function() {
+                  var type = PacketType[this.name];
+                  switch (type) {
+                    case undefined:
+                    case null:
+                      return this.children ? this : this.content;
+                      break;
+                    case "parent":
+                      return this;
+                      break;
+                    case "byte":
+                      return this.content.readUInt8(0);
+                      break;
+                    case "gid":
+                      return new GID(this.content);
+                      break;
+                    case "int":
+                      return this.content.readUInt32LE(0);
+                      break;
+                    case "ip":
+                      var tmpip = Buffer(4);
+                      tmpip[3] = this.content[0];
+                      tmpip[2] = this.content[1];
+                      tmpip[1] = this.content[2];
+                      tmpip[0] = this.content[3];
+                      return ip.toString(tmpip);
+                      break;
+                    case "short":
+                      return this.content.readUInt16LE(0);
+                      break;
+                    case "string":
+                      return this.content.toString('utf8', 0, this.content.length-1).replace("\u0000", "");
+                      break;
+                    case "bytes":
+                      return this.content;
+                      break;
+                    default:
+                      return new Error("Unknown PacketType: " + type);
+                      break;
+                  }
+                };
+                PCPAtom.prototype.setValue = function(v) {
+                  var type = PacketType[this.name];
+                  switch (type) {
+                    case undefined:
+                    case null:
+                      if (v instanceof Array) {
+                        this.children = v;
+                      } else {
+                        this.content = v;
+                      }
+                      break;
+                    case "parent":
+                      this.children = v;
+                      break;
+                    case "byte":
+                      this.content = new Buffer(1);
+                      this.content.writeUInt8(v, 0);
+                      break;
+                    case "gid":
+                      this.content = v.id;
+                      break;
+                    case "int":
+                      this.content = new Buffer(4);
+                      this.content.writeUInt32LE(v, 0);
+                      break;
+                    case "ip":
+                      var tmpip = ip.toBuffer(v);
+                      this.content = new Buffer(4);
+                      this.content[0] = tmpip[3];
+                      this.content[1] = tmpip[2];
+                      this.content[2] = tmpip[1];
+                      this.content[3] = tmpip[0];
+                      break;
+                    case "short":
+                      this.content = new Buffer(2);
+                      this.content.writeUInt16LE(v, 0);
+                      break;
+                    case "string":
+                      this.content = new Buffer(v + "\0");
+                      break;
+                    case "bytes":
+                      this.content = v;
+                      break;
+                    default:
+                      throw new Error("Unknown packet type: " + type);
+                      break;
+                  }
+                };
+                PCPAtom.prototype.getFromName = function(n) {
+                  var c = this.children.filter(
+                      function(param) {
+                        if (n == param.name) {
+                          return true;
+                        } else {
+                          return false;
+                        }
+                      }
+                      );
+                  switch (c.length) {
+                    case 0:
+                      return null;
+                      break;
+                    case 1:
+                      return c[0].getValue();
+                      break;
+                    default:
+                      return c.map(
+                          function(param) {
+                            return param.getValue();
+                          }
+                          );
+                      break;
+                  }
+                };
+                PCPAtom.prototype.setFromName = function(name, value) {
+                  this.children = this.children.filter(
+                      function(param) {
+                        return (param.name != name);
+                      }
+                      );
+                  var atom = new PCPAtom(name, null, null);
+                  atom.setValue(value);
+                  this.children.push(atom);
+                  return value;
+                };
+          %p
+            Rubyでは[]=演算子のオーバーロードによって、Atomに内容を代入していましたが、
+            それに相当するのがsetFromName関数です。
+            同じく、Rubyでは[]演算子をオーバーロードすることによって、Atomから内容を取り出していましたが、
+            それに相当するのがgetFromName関数です。
+            これら2つの関数は両方とも、Atomの子を対象にする関数です。
+          %p
+            同じくRubyではvalueとvalue=関数を定義することによって、
+            Atomの内容を読み出したり、変更したりすることができましたが、
+            やはりJavascriptにはそういう機能はないので、
+            getValue、setValue関数を定義することで実装しています。
+          %p
+            これらの関数、特にsetValue関数を実装することにより、
+            すぐに送信できるBuffer型として内容を保持しています。
+            実際に送信する部分のコードはこのようになります。
+          %pre
+            :preserve
+              PCPAtom.prototype.write = function(stream) {
+                if ((this.children != null) && (this.children.length &gt; 0)) {
+                  var buf = new Buffer(8);
+                  buf.fill(0x0);
+                  var c_count = this.children.length;
+                  c_count = c_count + 0x80000000;
+                  buf.write(this.name, 0);
+                  buf.writeUInt32LE(c_count, 4);
+                  stream.write(buf);
+                  for (var i = 0; i &lt; this.children.length; i++) {
+                    this.children[i].write(stream);
+                  }
+                } else {
+                  var buf = new Buffer(8);
+                  buf.fill(0x0);
+                  buf.write(this.name, 0);
+                  buf.writeUInt32LE(this.content.length, 4);
+                  buf = Buffer.concat([buf, this.content]);
+                  stream.write(buf);
+                }
+              };
+          %p
+            つまり、Atomを実際に送信できる形に戻して、stream(例えばsocket)に送信しているわけです。
+          %p
+            注意したいのはいったん送信用のバッファを0x0で埋めていることです。
+            これはJavascriptでnull終端文字列を実現するのが面倒くさいことによります。
+            いったんバッファを埋めておかないと、宣言された直後のバッファは不定の値が入るので、
+            注意が必要です。
+        %section
+          %h4 ステート再び
+          %p
+            さて、これでだいたい下準備は終わりなのですが、またここでステート(状態)管理が登場します。
+          %p
+            それは何故かというと、先述のPCPハンドシェイクの行う前の段階それぞれで、
+            サーバーは状況を判断し状態を保存せねばならず、
+            そうしなければブロッキングな処理を行ってしまうことになるからです。
+          %p
+            PCPハンドシェイクを行う下準備として必要なステートは3種類です。
+          %dl
+            %dt INITIAL
+            %dd 初期状態。まだどんなデータも受け取っておらず、PCPヘッダを待っている状態。'pcp\n'を受け取るとWAITPCPLENGTHに移行する。
+            %dt WAITPCPLENGTH
+            %dd PCPヘッダのうち、'PCP\n'の部分を受け取り、続くバイト長の部分を待っている状態。バイト長を受け取るとWAITPCPVERSIONに移行する。
+            %dt WAITPCPVERSION
+            %dd バイト長の部分を受け取り、PCPプロトコルのバージョンを待っている状態。プロトコルバージョンを受け取ると、接続情報を保存してPCPのAtomを送受信できる状態へ移行する。
+          %p
+            これらのロジックはAtomを読み込むときのロジックとほぼ一緒です。ですが、最後の部分だけがちょっと違います。
+        %section
+          %h4 接続状態を保存する
+          %p
+            なぜ接続状態を保存しているのでしょうか。そのひとつはPCPで来る接続とHTTPで来る接続を区別するためです。
+          %p
+            実はYPのPeercastポートにはPCP以外にもHTTPヘッダが来る場合があります。
+            HTTPヘッダはPeercastクライアントがYPに対してピア(リレーの枝)の情報をほしい場合などに送られてきます。
+            通常の場合、配信者のアドレスに対してピアの情報を要求するのですが、
+            ごくごく希にYPに対して要求してくることがあります。
+          %p
+            もうひとつの理由は、一度確立された接続を保存することで、コードを分離することができるためです。
+        %section
+          %h4 RouterとHandler
+          %p
+            接続状態を保存することによってコードをどのように分離できるか。
+            私はHTTPでよく行われる処理を参考に、RouterとHandlerという2つのモジュールに分離しました。
+            つまり、メインのコードからRouterに、RouterからHandlerに処理を受け渡すことでコードを分離するのです。
+          %p
+            Routerのコードを一部示しましょう。
+          %pre
+            :preserve
+              function YpRouter(sock, handlers) {
+                
+                this.socket = sock;
+                this.pcphandler = new handlers["PCP"](this.socket);
+                this.httphandler = new handlers["HTTP"](this.socket);
+                this.hr = new HeaderReader(sock);
+                
+                this.route = function(host, chobj) {
+                  // route request
+                  if (host[this.socket.remoteAddress+":"+this.socket.remotePort]) {
+                    if (host[this.socket.remoteAddress+":"+this.socket.remotePort].method == "PCP") {
+                      host = this.pcphandler.handle(host, chobj);
+                      sock.read(0);
+                    } else if (host[this.socket.remoteAddress+":"+this.socket.remotePort].method == "HTTP") {
+                      host = this.httphandler.handle(host, chobj);
+                      sock.read(0);
+                    }
+                  } else {
+                    req = this.hr.read();
+                    try {
+                      if (req instanceof PCPRequest) {
+                        console.log("Router : Forward to PCP Handler.");
+                        host = this.pcphandler.handle(host, chobj);
+                        sock.read(0);
+                      } else if (req instanceof HTTPRequest) {
+                        console.log("Router : Forward to HTTP Handler.");
+                        host = this.httphandler.handle(req, host, chobj);
+                        sock.read(0);
+                      } else {
+                        sock.read(0);
+                      }
+                    } catch (e) {
+                      console.log("Router : Exeception detected.");
+                      delete host[this.socket.remoteAddress+":"+this.socket.remotePort];
+                      this.socket.close();
+                    }
+                  }
+                  return host;
+                }
+                
+              }
+          %p
+            このように(といってもわかりづらいですが)、ヘッダがPCPなら以降の接続は全てPCP、
+            ヘッダがHTTPなら(といってもPCP以外なら全てHTTP扱いをしているのですが)以降の接続は全てHTTPとみなす処理をしています。
+          %p
+            では次に、PCPのHandlerを見てみましょう。
+          %pre
+            :preserve
+              function PCPHandler(sock) {
+                
+                this.socket = sock;
+                this.reader = new pcpatom.PCPAtomReader(this.socket);
+                
+                this.handle = function(host, chobj) {
+                  if (!(host.sessionId)) {
+                    host.sessionId = sessionId;
+                  }
+                  
+                  var data = this.reader.read();
+                  if (!(data)) {  // data is null
+                    return host;
+                  }
+                  
+                  try {
+                    host = processAtom(data, sock, host, chobj);
+                  } catch (e) {
+                    var quitbuf = new Buffer(4);
+                    quitbuf.writeUInt32LE(pcpconst.PCP_ERROR_QUIT+pcpconst.PCP_ERROR_GENERAL, 0);
+                    var quitAtom = new pcpatom(pcpconst.PCP_QUIT, null, quitbuf);
+                    quitAtom.write(sock);
+                    delete host[toStringRemoteAddressPort(sock)];
+                    console.log("Handler : Exeception detected ...");
+                    console.log(util.inspect(e));
+                  }
+                  
+                  return host;
+                }
+              }
+
+              exports.Handler = PCPHandler;
+          %p
+            これも、状態を保存する全てのロジックと同様に、
+            コンストラクタ関数からオブジェクトを作成して、その中に全ての状態を保存するようにしています。
+          %p
+            重要なのはこれらの過程でHost(接続情報)を渡して、Host(接続情報)を返していることです。
+            これによって、メインからRouter、そしてHandlerへと行き着く過程の
+            全てのオブジェクトで接続情報を共有することができます(泥臭いやり方ですが)。
+        %section
+          %h4 例外を投げる、捕まえる
+          %p
+            ところで、ここまでのコードにいくつか<code>try { 文; } catch (e) { 文; }</code>という記述が出てきました。
+            勘がよい方はお察しかと思いますが、Javascriptにも例外が存在します。
+            例外とは(MDNでは)エラーとも呼ばれており、次の様な形で扱います。
+          %pre
+            :preserve
+              try {
+                throw new Error("Error!");
+              } catch (e) {
+                if (e instanceof Error) {
+                  console.log("Error detected" + e.name + ":" + e.message);
+                } else {
+                  console.log("Unknown error");
+                  throw e;
+                }
+              } finally {
+                console.log("Finally.");
+              }
+          %p
+            throwとnew演算子を用いて、新しくエラーオブジェクトを作って例外を投げます。
+            そうしてtry節内部で例外が投げられるとcatch節で例外が捕らえられます。
+            例外が捕らえられようが捕らえられまいが、最終的にはfinally節が実行されます。
+          %p
+            例外はとらえられない限り、呼び出し元をさかのぼっていき、
+            最終的にcatchされない場合はプログラムを終了させることに注意が必要です。
+            つまり、例外が発生する可能性がある場合は、必要に応じて例外を処理しなければなりません。
+          %p
+            例外についてはやたら深い問題が詰まっているので、他の文献も参照していただけると幸いです。
+        %section
+          %h4 PCP_HELOを受信して、PCP_OLEHを送り返す
+          %p
+            ようやくここまで来ました。PCP_HELO Atomを受信して、PCP_OLEH Atomを送り返すコードを見てみましょう。
+          %pre
+            :preserve
+              function onHelo(atom, sock, host, chobj) {
+                console.log("Handler : PCP_HELO");
+                
+                var addr = toStringRemoteAddressPort(sock);
+                host[addr] = new PCPHost(
+                  atom.getFromName(pcpconst.PCP_HELO_SESSIONID),
+                  atom.getFromName(pcpconst.PCP_HELO_BCID),
+                  atom.getFromName(pcpconst.PCP_HELO_AGENT),
+                  sock.remoteAddress,
+                  atom.getFromName((pcpconst.PCP_HELO_PORT || 0)),
+                  atom.getFromName(pcpconst.PCP_HELO_VERSION),
+                  1  // TODO: Fix Temporary value
+                );
+                host[addr].method = "PCP";
+                
+                var oleh = new pcpatom(pcpconst.PCP_OLEH, [], null);
+                oleh.setFromName(pcpconst.PCP_HELO_AGENT, agentName);
+                oleh.setFromName(pcpconst.PCP_HELO_SESSIONID, sessionId);
+                oleh.setFromName(pcpconst.PCP_HELO_VERSION, 1218);
+                oleh.setFromName(pcpconst.PCP_HELO_REMOTEIP, sock.remoteAddress);
+                oleh.setFromName(pcpconst.PCP_HELO_PORT, host[addr].port);
+                console.log("Handler : Send OLEH");
+                
+                oleh.write(sock);
+                
+                return host;
+              }
+          %p
+            最初に説明しておかなければならないのは自作ユーティリティ関数のtoStringRemoteAddressPortですね。
+            これはこのようなコードになっています。
+          %pre
+            :preserve
+              function toStringRemoteAddressPort(sock) {
+                return sock.remoteAddress + ":" + sock.remotePort;
+              }
+          %p
+            次に説明するべきはPCPHostオブジェクトでしょう。
+            これは構造体の代わりをするオブジェクトとして(別ファイルで)定義されています。
+          %pre
+            :preserve
+              function PCPHost(session_id, broadcast_id, agent, ip, port, version, vp_version) {
+                this.sessionId = session_id;
+                this.broadcastId = broadcast_id;
+                this.agent = agent;
+                this.ip = ip;
+                this.port = port;
+                this.version = version;
+                this.vpVersion = vp_version;
+              }
+              exports.PCPHost = PCPHost;
+          %p
+            このコンストラクタ関数の定義からもわかるように、
+            PCP_HELOからはいくつかの情報が読み取れます。
+            重要なのは以下です。
+          %dl
+            %dt セッションID(PCP_HELO_SESSIONID)
+            %dd セッションIDは接続ごとに固有に生成されるGIDです。これを利用して、YPは配信を識別します。
+            %dt ブロードキャストID(PCP_HELO_BCID)
+            %dd ブロードキャストIDはクライアント固有のGIDです。YPはこれを用いることはほとんどありませんが、これを利用してクライアントを識別することもできます。
+            %dt エージェント(PCP_HELO_AGENT)
+            %dd クライアントのエージェント名です。要するにPeercastのリレーにどのソフトウェアを使っているかということです。
+          %p
+            YPサーバーで作らなければいけない情報もあります。それは配信者のIPアドレスと配信用のポートです。
+            これら2つはYP側から教えない限り、ポートが開放されているのか、また、配信用のアドレスがいくつなのかを知ることはできません。
+            したがって、YPはこれら2つの情報をPCP_OLEH Atomに含めます。配信用のポートが開いてない場合はポートを0として通知します(だからポート0なのです)。

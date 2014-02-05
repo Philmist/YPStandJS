@@ -127,16 +127,22 @@ function YpRouter(sock, handlers) {
       }
     } else {
       req = this.hr.read();
-      if (req instanceof PCPRequest) {
-        console.log("Router : Forward to PCP Handler.");
-        host = this.pcphandler.handle(host, chobj);
-        sock.read(0);
-      } else if (req instanceof HTTPRequest) {
-        console.log("Router : Forward to HTTP Handler.");
-        host = this.httphandler.handle(req, host, chobj);
-        sock.read(0);
-      } else {
-        sock.read(0);
+      try {
+        if (req instanceof PCPRequest) {
+          console.log("Router : Forward to PCP Handler.");
+          host = this.pcphandler.handle(host, chobj);
+          sock.read(0);
+        } else if (req instanceof HTTPRequest) {
+          console.log("Router : Forward to HTTP Handler.");
+          host = this.httphandler.handle(req, host, chobj);
+          sock.read(0);
+        } else {
+          sock.read(0);
+        }
+      } catch (e) {
+        console.log("Router : Exeception detected.");
+        delete host[this.socket.remoteAddress+":"+this.socket.remotePort];
+        this.socket.close();
       }
     }
     return host;

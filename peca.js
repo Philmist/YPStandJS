@@ -366,7 +366,7 @@ PCPAtom.prototype.setFromName = function(name, value) {
 };
 
 PCPAtom.prototype.write = function(stream) {
-  if ((this.children != null) & (this.children.length > 0)) {
+  if ((this.children != null) && (this.children.length > 0)) {
     var buf = new Buffer(8);
     buf.fill(0x0);
     var c_count = this.children.length;
