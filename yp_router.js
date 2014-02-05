@@ -126,8 +126,8 @@ function YpRouter(sock, handlers) {
         sock.read(0);
       }
     } else {
-      req = this.hr.read();
       try {
+        req = this.hr.read();
         if (req instanceof PCPRequest) {
           console.log("Router : Forward to PCP Handler.");
           host = this.pcphandler.handle(host, chobj);
