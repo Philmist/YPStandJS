@@ -48,7 +48,7 @@ function onChan(atom, sock, host, chobj) {
   if (!h) {
     return host;
   }
-  var c = chobj.get(h.sessionId.toString());
+  var c = chobj.get(channelId.toString());
   if (c) {
     if (c.broadcastId == h.broadcastId) {
       var aChInfo = atom.getFromName(pcpconst.PCP_CHAN_INFO);
@@ -60,7 +60,7 @@ function onChan(atom, sock, host, chobj) {
         c.track = aTrack;
       }
       c.lastUpdated = Date.now();
-      chobj.set(h.sessionId.toString(), c);
+      chobj.set(channelId.toString(), c);
     }
   } else if (h.broadcastId) {
     c = {
@@ -72,7 +72,8 @@ function onChan(atom, sock, host, chobj) {
       track : null,
       hosts : {}
     };
-    chobj.set(h.sessionId.toString(), c);
+    chobj.set(channelId.toString(), c);
+    h.channelId.push(channelId);
   }
   
   return host;
@@ -85,7 +86,7 @@ function onHost(atom, sock, host, chobj) {
   var channelId = atom.getFromName(pcpconst.PCP_HOST_CHANID);
   var remoteAddr = toStringRemoteAddressPort(sock);
   var hostSId = host[remoteAddr].sessionId;
-  var c = chobj.get(hostSId.toString());
+  var c = chobj.get(channelId.toString());
   if ((hostSId) && (c)) {
     var hSIdstr = hostSId.toString();
     var sIdstr = sId.toString();
@@ -100,15 +101,29 @@ function onHost(atom, sock, host, chobj) {
       } else {
         delete c.hosts[sId];
       }
+      /*
+      if (c.hosts.getOwnPropertyNames > 0) {
+        chobj.set(channelId.toString(), c);
+      } else {
+        chobj.del(channelId.toString());
+        if (host.channelId) {
+          host.channelId = host.channelId.filter( function(element) {
+            return (element.toString()) != (channelId.toString())
+          });
+        }
+      }
+      */
     }
   }
   return host;
 }
 
 function onQuit(atom, sock, host, chobj) {
-  console.log("Handler : PCP_QUIT");
+  console.log("Handler : PCP_QUIT from " + toStringRemoteAddressPort(sock));
   var h = host[toStringRemoteAddressPort(sock)];
-  chobj.del(h.sessionId.toString());
+  for (var i = 0; i < h.channelId.length; i++) {
+    chobj.del(h.channelId[i]);
+  }
   delete host[toStringRemoteAddressPort(sock)];
   var tmpbuf = Buffer(4);
   tmpbuf.writeUInt32LE(pcpconst.PCP_ERROR_QUIT+pcpconst.PCP_ERROR_GENERAL, 0);
@@ -133,6 +148,7 @@ function onHelo(atom, sock, host, chobj) {
     1  // TODO: Fix Temporary value
   );
   host[addr].method = "PCP";
+  host[addr].channelId = [];
   
   //console.log("Handler : " + addr + " 's host info is");
   //console.log(util.inspect(host[addr]));

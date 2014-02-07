@@ -71,8 +71,8 @@ YPを作って学ぶJavascript(仮題)
 --- expressコマンドでひな形を作る
 --- package.jsonとnpm -d install
 --- ViewとRoute
---- ルータに変数を渡すには(ルートミドルウェア)
 --- Jadeを使う
+--- ルータに変数を渡すには(ルートミドルウェア)
 --- index.txtを作る
 - あとがき
 

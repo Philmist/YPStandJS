@@ -1587,6 +1587,7 @@
                   1  // TODO: Fix Temporary value
                 );
                 host[addr].method = "PCP";
+                host[addr].channelId = [];
                 
                 var oleh = new pcpatom(pcpconst.PCP_OLEH, [], null);
                 oleh.setFromName(pcpconst.PCP_HELO_AGENT, agentName);
@@ -1639,7 +1640,7 @@
             これら2つはYP側から教えない限り、ポートが開放されているのか、また、配信用のアドレスがいくつなのかを知ることはできません。
             したがって、YPはこれら2つの情報をPCP_OLEH Atomに含めます。配信用のポートが開いてない場合はポートを0として通知します(だからポート0なのです)。
       %section
-        %h3 ひたすらAtomを処理します
+        %h3 ひたすらAtomを処理する
         %p この節ではクライアントから送られてくるAtomを処理して、YPに必要な情報を集めていく過程を記述します。
         %section
           %h4 チャンネル情報をどうやって共有するか
@@ -1684,3 +1685,363 @@
             別ファイルに分離しておけば、保存に何を使おうとも、同じ名前の関数を定義しておけば、
             他のファイルでの変更がほぼ不要になるのです。
             これはすばらしい利点です。
+        %section
+          %h4 PCP_CHAN AtomとPCP_HOST Atomを処理する
+          %p
+            では次はPCP_BCST Atomの子Atomとして送られてくる、PCP_CHANとPCP_HOSTの各Atomを処理してみましょう。
+            具体的なコードはこうなります。
+          %pre
+            :preserve
+              function onChan(atom, sock, host, chobj) {
+                console.log("Handler : PCP_CHAN");
+                var channelId = atom.getFromName(pcpconst.PCP_CHAN_ID);
+                var h = host[toStringRemoteAddressPort(sock)];
+                if (!h) {
+                  return host;
+                }
+                var c = chobj.get(channelId.toString());
+                if (c) {
+                  if (c.broadcastId == h.broadcastId) {
+                    var aChInfo = atom.getFromName(pcpconst.PCP_CHAN_INFO);
+                    if (aChInfo) {
+                      c.info = aChInfo;
+                    }
+                    var aTrack = atom.getFromName(pcpconst.PCP_CHAN_TRACK);
+                    if (aTrack) {
+                      c.track = aTrack;
+                    }
+                    c.lastUpdated = Date.now();
+                    chobj.set(channelId.toString(), c);
+                  }
+                } else if (h.broadcastId) {
+                  c = {
+                    startFrom : Date.now(),
+                    lastUpdated : Date.now(),
+                    channelId : channelId,
+                    broadcastId : h.broadcastId,
+                    info : null,
+                    track : null,
+                    hosts : {}
+                  };
+                  chobj.set(channelId.toString(), c);
+                  h.channelId.push(channelId);
+                }
+                return host;
+              }
+
+              function onHost(atom, sock, host, chobj) {
+                console.log("Handler : PCP_HOST");
+                var sId = atom.getFromName(pcpconst.PCP_HOST_ID);
+                var channelId = atom.getFromName(pcpconst.PCP_HOST_CHANID);
+                var remoteAddr = toStringRemoteAddressPort(sock);
+                var hostSId = host[remoteAddr].sessionId;
+                var c = chobj.get(channelId.toString());
+                if ((hostSId) && (c)) {
+                  var hSIdstr = hostSId.toString();
+                  var sIdstr = sId.toString();
+                  if (hSIdstr == sIdstr) {
+                    var hostflag = atom.getFromName(pcpconst.PCP_HOST_FLAGS1);
+                    if (!hostflag) {
+                      hostflag = 0;
+                    }
+                    if ((hostflag & pcpconst.PCP_HOST_FLAGS1_RECV) != 0) {
+                      c.lastUpdated = Date.now();
+                      c.hosts[sId] = atom;
+                    } else {
+                      delete c.hosts[sId];
+                    }
+                  }
+                }
+                return host;
+              }
+          %p
+            PCP_CHAN Atomでは主に配信のメタデータ、具体的には配信名とその説明などが送られてきます。
+            同時に、配信を一意に識別するためのGID、チャンネルIDが送られてきます。
+            このチャンネルIDを接続情報(Host)に結びつけてやります。
+          %p
+            PCP_HOST Atomでは主に枝(ピア)に関する情報が送られてきます。
+            こちらにも、チャンネルIDが含まれています。
+          %p
+            落とし穴になるのは、一つのPCP接続から複数の配信を行うことが可能だということです。
+            この場合、「全ての配信が終了しない限り」、PCPの切断を行わない為に、PCP_QUIT Atomが送られてきません。
+            ですから、一つの接続から複数配信が行われている場合には、YP側で配信終了の判断を行わなければなりません。
+            上のコードではこの複数配信の処理を省略しています。
+        %section
+          %h4 PCP_QUIT Atomを処理する
+          %p
+            全ての配信を終了し、あとはPCP接続を切断するだけ、となった場合にPeercastクライアントからYPに対して、PCP_QUIT Atomが送られてきます。
+          %p
+            このAtomが送られてきた場合には、接続情報を調べて、全てのチャンネルを削除し、そして自身を接続情報から削除します。
+            具体的なコードを見てみましょう。
+          %pre
+            :preserve
+              function onQuit(atom, sock, host, chobj) {
+                console.log("Handler : PCP_QUIT from " + toStringRemoteAddressPort(sock));
+                var h = host[toStringRemoteAddressPort(sock)];
+                for (var i = 0; i &lt; h.channelId.length; i++) {
+                  chobj.del(h.channelId[i]);
+                }
+                delete host[toStringRemoteAddressPort(sock)];
+                var tmpbuf = Buffer(4);
+                tmpbuf.writeUInt32LE(pcpconst.PCP_ERROR_QUIT+pcpconst.PCP_ERROR_GENERAL, 0);
+                var tmpatom = new pcpatom(pcpconst.PCP_QUIT, null, tmpbuf);
+                tmpatom.write(sock);
+                sock.end();
+                return host;
+              }
+          %p
+            はい、説明通りのコードです。説明していないのは、「おまじない」として接続を切断する前にこちらからもPCP_QUIT Atomを送り返していることくらいです。
+      %section
+        %h3 YPを表示する
+        %p
+          この節では、今まで集めた情報を元にして、実際にYPをHTMLやindex.txtとして表示します。
+        %section
+          %h4 "Express"とは
+          %p
+            これ以上さらに、フルスクラッチでHTTPサーバーを作るのはしんどいので、今回は非常に便利なフレームワーク、"Express"を使います。
+          %p
+            %a{:href=>"http://expressjs.com/"}Express
+            とは、node.js用に作られた(比較的)軽量なWebフレームワークです。
+            RubyにおけるSinatraのちょっと豪華版、だいたいPadrinoあたりの立ち位置と思っていただければいいでしょう(Railsほどは充実していません)。
+            公式の例によると、これだけでHTTPのサーバーができてしまいます。
+          %pre
+            :preserve
+              app.get('/hello.txt', function(req, res){
+                var body = 'Hello World';
+                res.setHeader('Content-Type', 'text/plain');
+                res.setHeader('Content-Length', Buffer.byteLength(body));
+                res.end(body);
+              });
+              app.listen(3000);
+              console.log('Listening on port 3000');
+          %p
+            実に簡単です。ですが、Expressはさらに簡単にひな形を作ることもできます。
+        %section
+          %h4 expressコマンドでひな形を作る
+          %p
+            まず、公式にもあるとおり、expressモジュールをグローバルにインストールします。
+          %pre
+            npm install -g express
+          %p
+            こうすることで、ひな形を簡単に作成できる、expressコマンドを使うことができます。
+            使うには<code>express 作成するディレクトリ名</code>とするだけです。
+            そうすることで、指定したディレクトリにpackage.jsonをはじめとした様々なディレクトリ、ファイルが作成されます。
+        %section
+          %h4 package.json
+          %p
+            ところで、expressコマンドでひな形を作成すると、
+            先ほども説明した通り、package.jsonというファイルが作成されます。
+            これは、そのアプリケーションに必要なパッケージ、アプリケーションのバージョンと開始方法等を記述したファイルです。
+            YPStandJSの場合は以下のようになっています。
+          %pre
+            :preserve
+              {
+                "name": "YPStandJS",
+                "version": "0.0.1",
+                "private": true,
+                "scripts": {
+                  "start": "node app.js"
+                },
+                "dependencies": {
+                  "express": "3.4.7",
+                  "jade": "*",
+                  "ip": "*"
+                }
+              }
+          %p
+            これを利用することによって、必要なパッケージを一度にインストールすることができます。
+            それが<code>npm -d install</code>コマンドです。
+            "dependencies"節に書いてあるパッケージを、依存関係を考慮しながらインストールすることができます。
+        %section
+          %h4 ビューとルート
+          %p
+            expressを使うためにはビューとルートについて理解しなければなりません。
+            ざっくり説明すると、ルートはリクエストを宛先別に振り分けられたあとに実行するもの、
+            ビューはそれを受けて表示するものです。
+          %p
+            なぜこのように分けるのでしょうか。
+            それは先の例のように、ソースコードの中に表示する部分を埋め込んでしまうと、
+            修正が容易でなくなり、さらには複数人での作業も困難になるためです。
+          %p
+            では、実際にビューとルートを分けたコードを見てみましょう。
+            次に示すのはルートのコードです。
+          %pre
+            :preserve
+              exports.index = function(req, res){
+                res.locals.pecaAddr = req.cookies.pecaAddr || '127.0.0.1';
+                res.locals.pecaPort = req.cookies.pecaPort || '7144';
+                res.render('index', { title: 'YPStandJS' });
+              };
+          %p
+            そして次に示すのがビューのコードです。
+          %pre
+            :preserve
+              extends layout
+              block content
+                h1= title
+                dl
+                  - for (var i in channels)
+                    - if (channels[i].tracker)
+                      dt
+                        a(href="http://"+pecaAddr+":"+pecaPort+"/pls/"+channels[i].channelId.toString()+"?tip="+channels[i].tracker)= channels[i].name ? channels[i].name : "名無し"
+                      dd
+                        dl
+                          dt ジャンル
+                          - if (channels[i].genre)
+                            dd= channels[i].genre
+                          dt 最終更新
+                          - if (channels[i].lastUpdated)
+                            dd= (new Date(channels[i].lastUpdated)).toString()
+                          dt リレー
+                          - if (channels[i].tracker)
+                            dd= channels[i].directs.toString() + " / " + channels[i].relays.toString()
+          %p
+            今回はビューのコードをJadeというテンプレート専用の言語で書いています。
+            ではJadeについて少々解説しましょう。
+        %section
+          %h4 Jadeを使う
+          %p
+            %a{:href=>"http://jade-lang.com/"}Jade
+            とはNode.js用のテンプレートエンジンです。
+            その文法はRuby用のテンプレートエンジン、
+            %a{:href=>"http://haml.info/"}Haml
+            によく似ており、Hamlを覚えている方なら容易に習得することが可能です。
+          %p
+            基本はインデントでタグ構造を表現するという、Pythonによく似た文法です。
+            文法の詳細は
+            %a{:href=>"http://jade-lang.com/reference/"}リファレンス
+            にも載っています。
+          %p
+            重要なのは、<code>-</code>を使うことでJavascriptの文を使うことができるということです。
+            これによって、ビューの中でループを使うことができ、記述が非常に楽になります。
+            条件判断もすることができるので、例えばユーザーごとに内容を表示しわけたりすることが可能になります。
+          %p
+            ですが、Jadeの中で外部からのデータを使うには、
+            ルートから変数を持ってこなければ使えません。どうやって持ってくるのでしょうか。
+        %section
+          %h4 ルートからビューに変数を渡すには、あるいはルートミドルウェアとは
+          %p
+            ルートからビューに変数を渡すこと自体は簡単です。
+          %pre
+            :preserve
+              exports.index = function(req, res){
+                res.locals.pecaAddr = req.cookies.pecaAddr || '127.0.0.1';
+                res.locals.pecaPort = req.cookies.pecaPort || '7144';
+                res.render('index', { title: 'YPStandJS' });
+              };
+          %p
+            これは先に示したコードですが、<code>res.locals</code>に新しくプロパティを追加することによって、
+            ビューに変数を渡すことができます。
+          %p
+            そして地味に面白い仕様として、ルートは数珠つなぎにすることができます。
+            これはエントリポイントとなるapp.jsで次の様に書くことで実現されます。
+          %pre
+            :preserve
+              app.get('/', channel_list, routes.index);
+          %p
+            これはURLの'/'にHTTP GETを結びつけている訳ですが、
+            このようにしてルートを数珠つなぎにすると次のコードのような関数を返す関数を使うことによって面白いことができます。
+          %pre
+            :preserve
+              function startPCPServer(port, chobj) {
+                var sv = yp.startServer(port, router.YpRouter, handle, chobj);
+                var co = chobj;
+                return function(req, res, next) {
+                  res.locals.channels = co.getall();
+                  next();
+                }
+              }
+          %p
+            これはYPサーバーをスタートさせる関数ですが、
+            その返り値としてreq, res, nextを引数として取る関数を返しています。
+            これがポイントです。
+            req, res, nextの3つの引数を取る関数ならばどんな関数でも全て数珠つなぎにすることができます。
+            これがルートミドルウェアです。
+            設定さえしてやればいくつでも数珠つなぎにしてやることができます。
+            こうすることによって、実際にページを表示してやるまでに、様々な処理を挟むことができます。
+        %section
+          %h4 index.txtを作る
+          %p
+            最後に、index.txtを作って表示してみましょう。
+            index.txtの仕様は、元々のYPStandのコードを示すことによって代えさせていただきます。
+          %pre
+            :preserve
+              require 'stringio'
+              $server.mount_proc('/index.txt') do |req, res|
+                body = StringIO.new
+                yp_channles(req).each do |channel|
+                  data = [
+                    channel.name,       #//1 CHANNEL_NAME チャンネル名
+                    channel.channel_id, #//2 ID ID ユニーク値16進数32桁、制限チャンネルは全て0埋め
+                    channel.tracker,  #//3 TIP TIP ポートも含む。Push配信時はブランク、制限チャンネルは127.0.0.1
+                    u(channel.contact_url),  #//4 CONTACT_URL コンタクトURL 基本的にURL、任意の文字列も可 CONTACT_URL
+                    channel.genre,  #//5 GENRE ジャンル
+                    channel.description,  #//6 DETAIL 詳細
+                    channel.directs.to_s,  #//7 LISTENER_NUM Listener数 -1は非表示、-1未満はサーバのメッセージ。ブランクもあるかも
+                    channel.relays.to_s,  #//8 RELAY_NUM Relay数 同上 
+                    channel.bitrate.to_s,  #//9 BITRATE Bitrate 単位は kbps 
+                    channel.type,  #//10 TYPE Type たぶん大文字 
+                    channel.artist,  #//11 TRACK_ARTIST トラック アーティスト 
+                    channel.title,  #//12 TRACK_TITLE トラック タイトル 
+                    channel.album,  #//13 TRACK_ALBUM トラック アルバム 
+                    u(channel.track_url),  #//14 TRACK_CONTACT_URL トラック コンタクトURL 基本的にURL、任意の文字列も可 
+                    u(channel.name),  #//15 ENC_CHANNEL_NAME エンコード済みチャンネル名 URLエンコード(UTF-8)
+                    channel.uptime,  #//16 BROADCAST_TIME 配信時間 000?99999 
+                    'click',  #//17 STATUS ステータス 特殊なステータス disconnectしばらく情報の更新が無い、port0Push配信 又はアイコン
+                    channel.comment,  #//18 COMMENT コメント 
+                    '0',  #//19 DIRECT ダイレクトの有無 0固定
+                  ]
+                  body.puts(data.collect {|e| h(e) }.join('&lt;&gt;'))
+                end
+                res.body = body.string
+              end
+          %p
+            これをそのままJavascriptに移植するとこうなります。
+            ビューを使うのはめんどくさいのでそのまま表示させましょう。
+          %pre
+            :preserve
+              exports.index_txt = function(req, res) {
+                function escapeBrancket(str) {
+                  return str.replace(/&lt;/g, "&amp;lt;").replace(/&gt;/g, "&amp;gt;");
+                }
+                res.type("text/plain");
+                var channels = res.locals.channels;
+                var r = ""
+                for (var i in channels) {
+                  var data = [];
+                  data.push(channels[i].name);  // チャンネル名
+                  data.push(channels[i].channelId.toString());  // チャンネルID
+                  data.push(channels[i].tracker);  // TIP
+                  data.push(encodeURI(channels[i].contactUrl));  // コンタクトURL
+                  data.push(channels[i].genre);  // ジャンル
+                  data.push(channels[i].description);  // 詳細
+                  data.push(channels[i].directs.toString());  // リスナー数
+                  data.push(channels[i].relays.toString());  // リレー数
+                  data.push(channels[i].bitrate.toString());  // ビットレート
+                  data.push(channels[i].type);  // 配信種別
+                  data.push(channels[i].artist);  // トラックアーティスト
+                  data.push(channels[i].title);  // トラックタイトル
+                  data.push(channels[i].album);  // トラックアルバム
+                  data.push(encodeURI(channels[i].trackUrl));  // トラックのコンタクトURL
+                  data.push(escapeBrancket(encodeURI(channels[i].name)));  // チャンネル名
+                  var uptime = channels[i].lastUpdated - channels[i].startFrom;
+                  var uptimeHour = Math.floor(uptime / (1000 * 60 * 60));
+                  var uptimeMin = Math.floor(uptime / (1000 * 60));
+                  data.push(uptimeHour.toString() + ":" + uptimeMin.toString());  // 配信時間
+                  data.push("click");  // ステータス
+                  data.push(escapeBrancket(channels[i].comment));  // コメント
+                  data.push("0"); // ダイレクトの有無
+                  r = r + data.join("&lt;&gt;") + "\n";
+                }
+                res.send(r);
+              }
+  %section
+    %h2 あとがき
+    %p
+      これで、一通り、本当に本当に基本的な機能を持ったYPができあがりました。
+    %p
+      ですが、このYPにはまだまだバグも機能も足りていません。
+      しかしながら、YPStandJS作成を通して、ある程度はJavascriptを知ることができたと言え、
+      その意味では収穫があったと言えるでしょう。
+    %p
+      最後にこの文章が皆さんの役に立ち、Peercastコミュニティの活性化に役立つことを祈ります。

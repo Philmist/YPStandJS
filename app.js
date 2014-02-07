@@ -36,6 +36,7 @@ var channel_obj = channel.channel_mem;
 var channel_list = peca_middle.startPCPServer(7146, channel_obj);
 app.get('/', channel_list, routes.index);
 app.post('/setCookie', routes.setCookie);
+app.get('/index.txt', channel_list, routes.index_txt);
 //app.get('/users', user.list);
 
 http.createServer(app).listen(app.get('port'), function(){
