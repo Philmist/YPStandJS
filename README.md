@@ -1,0 +1,4 @@
+YPStandJS
+=========
+
+Javascript版のYPStandです
