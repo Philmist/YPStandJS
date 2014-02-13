@@ -9,13 +9,33 @@ var chan_list = {};
 function channel() {
 }
 
+channel._maintain = function () {
+  var del_index = [];
+  var i;
+  // search non-updated channel
+  for (i in chan_list) {
+    if (chan_list[i].lastUpdated) {
+      var tmp_msec = Date.now() - chan_list[i].lastUpdated;
+      if (tmp_msec > (1000 * 60 * 5)) {  // 5min.
+        del_index.push(i);
+      }
+    }
+  }
+  // delete channel
+  for (i = 0; i < del_index.length; i++) {
+    delete chan_list[del_index[i]];
+  }
+};
+
 channel.getall = function() {
+  channel._maintain();
   return chan_list;
-}
+};
 
 channel.get = function(chanid) {
+  channel._maintain();
   return chan_list[chanid];
-}
+};
 
 channel.set = function(chanid, obj) {
   chan_list[chanid] = obj;
@@ -67,11 +87,11 @@ channel.set = function(chanid, obj) {
     chan_list[chanid].tracker = '';
   }
   //console.log(util.inspect(chan_list[chanid]));
-}
+};
 
 channel.del = function(chanid) {
   delete chan_list[chanid];
-}
+};
 
 exports.channel_mem = channel;
 
